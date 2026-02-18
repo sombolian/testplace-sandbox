@@ -335,8 +335,8 @@ fun GeneralSettingsScreen(
             )
             Divider(modifier = Modifier.padding(horizontal = 16.dp))
             SettingsSwitch(
-                title = "Shake to pause",
-                subtitle = "Shake device to pause current readout",
+                title = "Shake to skip",
+                subtitle = "Shake device to skip current readout",
                 checked = shakeToPause,
                 onCheckedChange = {
                     shakeToPause = it

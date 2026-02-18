@@ -81,8 +81,9 @@ class NotificationProcessor(
         }
 
         // Check keyword rules
+        // Include appName, title, and content so block rules match anywhere
         // Strip invisible Unicode chars (RTL marks, zero-width spaces, etc.) so Hebrew rules match
-        val fullText = stripInvisibleChars("$title $content")
+        val fullText = stripInvisibleChars("$appName $title $content")
         val keywordRules = prefs.getKeywordRules()
 
         for (rule in keywordRules) {

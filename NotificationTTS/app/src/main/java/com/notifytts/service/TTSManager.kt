@@ -17,12 +17,10 @@ import java.io.File
 import java.util.*
 import java.util.concurrent.ConcurrentLinkedQueue
 
-/**
- * An item in the TTS queue with metadata for result tracking.
- */
 data class TTSQueueItem(
     val text: String,
     val logEntryId: Long = 0,
+    val enqueuedAt: Long = System.currentTimeMillis(),
     val onResult: ((success: Boolean, error: String?) -> Unit)? = null
 )
 
@@ -48,6 +46,10 @@ class TTSManager(private val context: Context) {
     private val wakeLock: PowerManager.WakeLock = (context.getSystemService(Context.POWER_SERVICE) as PowerManager)
         .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "NotificationTTS:TTSPlayback")
 
+    // Deferreds for current playback - allows skip/pause to unblock await immediately
+    @Volatile private var audioDeferred: CompletableDeferred<Pair<Boolean, String>>? = null
+    @Volatile private var deviceTtsDeferred: CompletableDeferred<Boolean>? = null
+
     init {
         initDeviceTts()
     }
@@ -61,10 +63,6 @@ class TTSManager(private val context: Context) {
         }
     }
 
-    /**
-     * Enqueue text for TTS with optional result callback.
-     * The callback reports whether TTS was actually generated and played successfully.
-     */
     fun enqueue(text: String, logEntryId: Long = 0, onResult: ((Boolean, String?) -> Unit)? = null) {
         if (isPaused) {
             onResult?.invoke(false, "TTS is paused")
@@ -82,7 +80,7 @@ class TTSManager(private val context: Context) {
             text
         }
 
-        queue.add(TTSQueueItem(truncated, logEntryId, onResult))
+        queue.add(TTSQueueItem(text = truncated, logEntryId = logEntryId, onResult = onResult))
         processQueue()
     }
 
@@ -96,6 +94,13 @@ class TTSManager(private val context: Context) {
             try {
                 while (queue.isNotEmpty() && !isPaused) {
                     val item = queue.poll() ?: break
+                    // Skip stale items (queued > 60s ago)
+                    val age = System.currentTimeMillis() - item.enqueuedAt
+                    if (age > 60_000L) {
+                        Log.w(TAG, "Dropping stale queued item (${age / 1000}s old): ${item.text.take(30)}")
+                        item.onResult?.invoke(false, "Stale - queued ${age / 1000}s ago")
+                        continue
+                    }
                     try {
                         speak(item)
                     } catch (e: Exception) {
@@ -131,24 +136,22 @@ class TTSManager(private val context: Context) {
     }
 
     private fun isEmoji(codePoint: Int): Boolean {
-        return codePoint in 0x1F600..0x1F64F || // Emoticons
-               codePoint in 0x1F300..0x1F5FF || // Misc Symbols and Pictographs
-               codePoint in 0x1F680..0x1F6FF || // Transport and Map
-               codePoint in 0x1F900..0x1F9FF || // Supplemental Symbols
-               codePoint in 0x1FA00..0x1FA6F || // Chess Symbols
-               codePoint in 0x1FA70..0x1FAFF || // Symbols Extended-A
-               codePoint in 0x2600..0x26FF ||   // Misc Symbols
-               codePoint in 0x2700..0x27BF ||   // Dingbats
-               codePoint in 0xFE00..0xFE0F ||   // Variation Selectors
-               codePoint == 0x200D ||            // Zero-width joiner (composite emojis)
-               codePoint in 0xE0020..0xE007F || // Tags
-               codePoint in 0x1F1E0..0x1F1FF    // Flags
+        return codePoint in 0x1F600..0x1F64F ||
+               codePoint in 0x1F300..0x1F5FF ||
+               codePoint in 0x1F680..0x1F6FF ||
+               codePoint in 0x1F900..0x1F9FF ||
+               codePoint in 0x1FA00..0x1FA6F ||
+               codePoint in 0x1FA70..0x1FAFF ||
+               codePoint in 0x2600..0x26FF ||
+               codePoint in 0x2700..0x27BF ||
+               codePoint in 0xFE00..0xFE0F ||
+               codePoint == 0x200D ||
+               codePoint in 0xE0020..0xE007F ||
+               codePoint in 0x1F1E0..0x1F1FF
     }
 
     private suspend fun speak(item: TTSQueueItem) {
-        // Acquire wakelock to keep sensors (shake detector) alive during playback
         try { wakeLock.acquire(120_000L) } catch (_: Exception) {}
-
         try {
             speakInternal(item)
         } finally {
@@ -194,13 +197,11 @@ class TTSManager(private val context: Context) {
             onSuccess = { audioFile ->
                 val playResult = playAudioFile(audioFile)
                 if (playResult.first) {
-                    Log.d(TAG, "TTS played successfully: duration=${playResult.second}ms")
                     item.onResult?.invoke(true, null)
                 } else {
                     val error = "Audio playback failed: ${playResult.second}"
                     Log.e(TAG, error)
                     if (prefs.fallbackToDeviceTts) {
-                        Log.d(TAG, "Falling back to device TTS after playback failure")
                         val fbSuccess = speakWithDeviceTts(item.text)
                         item.onResult?.invoke(fbSuccess, if (fbSuccess) "Gemini audio failed, device TTS used" else error)
                     } else {
@@ -211,7 +212,6 @@ class TTSManager(private val context: Context) {
             onFailure = { error ->
                 Log.e(TAG, "Gemini TTS generation failed: ${error.message}")
                 if (prefs.fallbackToDeviceTts) {
-                    Log.d(TAG, "Falling back to device TTS after generation failure")
                     val fbSuccess = speakWithDeviceTts(item.text)
                     item.onResult?.invoke(
                         fbSuccess,
@@ -225,21 +225,17 @@ class TTSManager(private val context: Context) {
         )
     }
 
-    /**
-     * Play an audio file and return (success, detail).
-     * detail is duration in ms on success, or error message on failure.
-     */
     private suspend fun playAudioFile(file: File): Pair<Boolean, String> = withContext(Dispatchers.Main) {
-        // Validate file before attempting playback
         if (!file.exists()) {
             return@withContext Pair(false, "Audio file does not exist")
         }
-        if (file.length() < 45) { // WAV header is 44 bytes minimum
+        if (file.length() < 45) {
             file.delete()
             return@withContext Pair(false, "Audio file too small: ${file.length()} bytes")
         }
 
         val completable = CompletableDeferred<Pair<Boolean, String>>()
+        audioDeferred = completable
         var mediaPlayer: MediaPlayer? = null
 
         requestAudioFocus()
@@ -257,42 +253,43 @@ class TTSManager(private val context: Context) {
                 prepare()
             }
 
-            // Verify the audio is actually playable
             val duration = mediaPlayer.duration
             if (duration <= 0) {
                 mediaPlayer.release()
                 file.delete()
                 abandonAudioFocus()
+                audioDeferred = null
                 return@withContext Pair(false, "Audio file has no playable content (duration=$duration)")
             }
-
-            Log.d(TAG, "Audio prepared: duration=${duration}ms, file=${file.length()} bytes")
 
             currentMediaPlayer = mediaPlayer
 
             mediaPlayer.setOnCompletionListener { mp ->
-                Log.d(TAG, "Audio playback completed successfully (duration=${duration}ms)")
-                isPlayingAudio = false
-                mp.release()
-                currentMediaPlayer = null
-                file.delete()
-                abandonAudioFocus()
-                completable.complete(Pair(true, "${duration}ms"))
+                // Guard: skip/pause may have already completed the deferred
+                if (!completable.isCompleted) {
+                    isPlayingAudio = false
+                    try { mp.release() } catch (_: Exception) {}
+                    currentMediaPlayer = null
+                    file.delete()
+                    abandonAudioFocus()
+                    completable.complete(Pair(true, "${duration}ms"))
+                }
             }
 
             mediaPlayer.setOnErrorListener { mp, what, extra ->
-                val errorMsg = "MediaPlayer error: what=$what, extra=$extra"
-                Log.e(TAG, errorMsg)
-                isPlayingAudio = false
-                mp.release()
-                currentMediaPlayer = null
-                file.delete()
-                abandonAudioFocus()
-                completable.complete(Pair(false, errorMsg))
+                if (!completable.isCompleted) {
+                    val errorMsg = "MediaPlayer error: what=$what, extra=$extra"
+                    Log.e(TAG, errorMsg)
+                    isPlayingAudio = false
+                    try { mp.release() } catch (_: Exception) {}
+                    currentMediaPlayer = null
+                    file.delete()
+                    abandonAudioFocus()
+                    completable.complete(Pair(false, errorMsg))
+                }
                 true
             }
 
-            // Apply speed if supported
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && prefs.ttsSpeed != 1.0f) {
                     mediaPlayer.playbackParams = mediaPlayer.playbackParams.setSpeed(prefs.ttsSpeed)
@@ -304,17 +301,16 @@ class TTSManager(private val context: Context) {
             mediaPlayer.start()
             isPlayingAudio = true
 
-            // Verify playback actually started
             if (!mediaPlayer.isPlaying) {
                 isPlayingAudio = false
                 mediaPlayer.release()
                 currentMediaPlayer = null
                 file.delete()
                 abandonAudioFocus()
+                audioDeferred = null
                 return@withContext Pair(false, "MediaPlayer.start() called but isPlaying=false")
             }
 
-            // Timeout prevents hanging forever if listeners never fire
             try {
                 withTimeout(90_000L) { completable.await() }
             } catch (e: TimeoutCancellationException) {
@@ -331,19 +327,15 @@ class TTSManager(private val context: Context) {
             isPlayingAudio = false
             file.delete()
             abandonAudioFocus()
-            mediaPlayer?.let {
-                try { it.release() } catch (_: Exception) {}
-            }
+            mediaPlayer?.let { try { it.release() } catch (_: Exception) {} }
             currentMediaPlayer = null
             Pair(false, "${e.javaClass.simpleName}: ${e.message}")
+        } finally {
+            audioDeferred = null
         }
     }
 
-    /**
-     * Speak with device TTS. Returns true if speech completed, false on error.
-     */
     private suspend fun speakWithDeviceTts(text: String): Boolean = withContext(Dispatchers.Main) {
-        // Wait up to 3 seconds for TTS engine to initialize
         var waited = 0
         while (!deviceTtsReady && waited < 3000) {
             delay(100)
@@ -355,6 +347,7 @@ class TTSManager(private val context: Context) {
         }
 
         val completable = CompletableDeferred<Boolean>()
+        deviceTtsDeferred = completable
 
         requestAudioFocus()
 
@@ -363,20 +356,21 @@ class TTSManager(private val context: Context) {
             setSpeechRate(prefs.ttsSpeed)
             setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
-                    Log.d(TAG, "Device TTS started speaking")
                     isPlayingAudio = true
                 }
                 override fun onDone(utteranceId: String?) {
-                    Log.d(TAG, "Device TTS completed successfully")
-                    isPlayingAudio = false
-                    abandonAudioFocus()
-                    completable.complete(true)
+                    if (!completable.isCompleted) {
+                        isPlayingAudio = false
+                        abandonAudioFocus()
+                        completable.complete(true)
+                    }
                 }
                 override fun onError(utteranceId: String?) {
-                    Log.e(TAG, "Device TTS error for utterance: $utteranceId")
-                    isPlayingAudio = false
-                    abandonAudioFocus()
-                    completable.complete(false)
+                    if (!completable.isCompleted) {
+                        isPlayingAudio = false
+                        abandonAudioFocus()
+                        completable.complete(false)
+                    }
                 }
             })
             speak(text, TextToSpeech.QUEUE_FLUSH, null, "ntts_${System.currentTimeMillis()}")
@@ -391,6 +385,8 @@ class TTSManager(private val context: Context) {
             isPlayingAudio = false
             abandonAudioFocus()
             false
+        } finally {
+            deviceTtsDeferred = null
         }
     }
 
@@ -416,23 +412,55 @@ class TTSManager(private val context: Context) {
         return isProcessing || currentMediaPlayer?.isPlaying == true
     }
 
-    /** True only when audio is actively playing (not during API call). Use for shake detection. */
     fun isAudioPlaying(): Boolean {
         return isPlayingAudio
     }
 
+    /**
+     * Skip the currently playing TTS. Marks it as success (played).
+     * Does NOT stop queue processing - next items will play.
+     */
+    fun skip() {
+        Log.d(TAG, "Skipping current TTS")
+        isPlayingAudio = false
+
+        // Stop MediaPlayer
+        currentMediaPlayer?.let {
+            try { it.stop(); it.release() } catch (_: Exception) {}
+        }
+        currentMediaPlayer = null
+
+        // Stop device TTS
+        deviceTts?.stop()
+
+        // Complete the pending deferreds as SUCCESS so item is marked "played"
+        audioDeferred?.complete(Pair(true, "skipped"))
+        audioDeferred = null
+        deviceTtsDeferred?.complete(true)
+        deviceTtsDeferred = null
+
+        abandonAudioFocus()
+    }
+
+    /**
+     * Pause all TTS. Stops current playback (marks as failed) and clears queue.
+     */
     fun pause() {
         isPaused = true
         isPlayingAudio = false
+
         currentMediaPlayer?.let {
-            try {
-                it.stop()
-                it.release()
-            } catch (_: Exception) {}
+            try { it.stop(); it.release() } catch (_: Exception) {}
         }
         currentMediaPlayer = null
         deviceTts?.stop()
-        // Report failure for all queued items
+
+        // Complete deferreds as failure (paused)
+        audioDeferred?.complete(Pair(false, "Paused"))
+        audioDeferred = null
+        deviceTtsDeferred?.complete(false)
+        deviceTtsDeferred = null
+
         while (queue.isNotEmpty()) {
             val item = queue.poll()
             item?.onResult?.invoke(false, "Paused - cleared from queue")
@@ -443,7 +471,6 @@ class TTSManager(private val context: Context) {
 
     fun resume() {
         isPaused = false
-        // Restart processing in case items were enqueued while paused
         if (queue.isNotEmpty()) {
             processQueue()
         }

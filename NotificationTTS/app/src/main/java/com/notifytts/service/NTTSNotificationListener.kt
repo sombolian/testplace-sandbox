@@ -129,15 +129,11 @@ class NTTSNotificationListener : NotificationListenerService() {
             shakeDetector = ShakeDetector(this).apply {
                 setThresholdFromSensitivity(prefs.shakeSensitivity)
                 start {
-                    // Only react when audio is actively playing (not during API call or idle)
                     if (ttsManager.isAudioPlaying()) {
-                        Log.d(TAG, "Shake detected - pausing TTS")
-                        ttsManager.pause()
+                        Log.d(TAG, "Shake detected - skipping current TTS")
+                        ttsManager.skip()
                         val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-                        vibrator?.vibrate(VibrationEffect.createOneShot(300, VibrationEffect.DEFAULT_AMPLITUDE))
-                        android.os.Handler(mainLooper).postDelayed({
-                            ttsManager.resume()
-                        }, 5000)
+                        vibrator?.vibrate(VibrationEffect.createOneShot(200, VibrationEffect.DEFAULT_AMPLITUDE))
                     }
                 }
             }
