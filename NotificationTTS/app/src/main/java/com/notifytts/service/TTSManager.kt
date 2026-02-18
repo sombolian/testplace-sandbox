@@ -39,6 +39,7 @@ class TTSManager(private val context: Context) {
     private val queue = ConcurrentLinkedQueue<TTSQueueItem>()
     private val mutex = Mutex()
     private var isProcessing = false
+    @Volatile private var isPlayingAudio = false
     private var currentMediaPlayer: MediaPlayer? = null
     private var deviceTts: TextToSpeech? = null
     private var deviceTtsReady = false
@@ -92,18 +93,22 @@ class TTSManager(private val context: Context) {
                 isProcessing = true
             }
 
-            while (queue.isNotEmpty() && !isPaused) {
-                val item = queue.poll() ?: break
-                try {
-                    speak(item)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error speaking: ${e.message}", e)
-                    item.onResult?.invoke(false, "Exception: ${e.message}")
+            try {
+                while (queue.isNotEmpty() && !isPaused) {
+                    val item = queue.poll() ?: break
+                    try {
+                        speak(item)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error speaking: ${e.message}", e)
+                        item.onResult?.invoke(false, "Exception: ${e.message}")
+                    }
                 }
-            }
-
-            mutex.withLock {
-                isProcessing = false
+            } finally {
+                // Always reset - prevents isProcessing getting stuck true
+                mutex.withLock {
+                    isProcessing = false
+                    isPlayingAudio = false
+                }
             }
         }
     }
@@ -264,6 +269,7 @@ class TTSManager(private val context: Context) {
 
             mediaPlayer.setOnCompletionListener { mp ->
                 Log.d(TAG, "Audio playback completed successfully (duration=${duration}ms)")
+                isPlayingAudio = false
                 mp.release()
                 currentMediaPlayer = null
                 file.delete()
@@ -274,6 +280,7 @@ class TTSManager(private val context: Context) {
             mediaPlayer.setOnErrorListener { mp, what, extra ->
                 val errorMsg = "MediaPlayer error: what=$what, extra=$extra"
                 Log.e(TAG, errorMsg)
+                isPlayingAudio = false
                 mp.release()
                 currentMediaPlayer = null
                 file.delete()
@@ -292,9 +299,11 @@ class TTSManager(private val context: Context) {
             }
 
             mediaPlayer.start()
+            isPlayingAudio = true
 
             // Verify playback actually started
             if (!mediaPlayer.isPlaying) {
+                isPlayingAudio = false
                 mediaPlayer.release()
                 currentMediaPlayer = null
                 file.delete()
@@ -305,9 +314,9 @@ class TTSManager(private val context: Context) {
             completable.await()
         } catch (e: Exception) {
             Log.e(TAG, "Error playing audio: ${e.javaClass.simpleName}: ${e.message}", e)
+            isPlayingAudio = false
             file.delete()
             abandonAudioFocus()
-            // Release the media player we created (not the old one)
             mediaPlayer?.let {
                 try { it.release() } catch (_: Exception) {}
             }
@@ -341,14 +350,17 @@ class TTSManager(private val context: Context) {
             setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
                     Log.d(TAG, "Device TTS started speaking")
+                    isPlayingAudio = true
                 }
                 override fun onDone(utteranceId: String?) {
                     Log.d(TAG, "Device TTS completed successfully")
+                    isPlayingAudio = false
                     abandonAudioFocus()
                     completable.complete(true)
                 }
                 override fun onError(utteranceId: String?) {
                     Log.e(TAG, "Device TTS error for utterance: $utteranceId")
+                    isPlayingAudio = false
                     abandonAudioFocus()
                     completable.complete(false)
                 }
@@ -383,8 +395,14 @@ class TTSManager(private val context: Context) {
         return isProcessing || currentMediaPlayer?.isPlaying == true
     }
 
+    /** True only when audio is actively playing (not during API call). Use for shake detection. */
+    fun isAudioPlaying(): Boolean {
+        return isPlayingAudio
+    }
+
     fun pause() {
         isPaused = true
+        isPlayingAudio = false
         currentMediaPlayer?.let {
             try {
                 it.stop()

@@ -15,22 +15,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import android.util.Log
 import com.notifytts.data.GeminiVoice
 import com.notifytts.data.PreferencesManager
 import com.notifytts.service.GeminiTTSAPI
 import com.notifytts.ui.components.*
-import kotlinx.coroutines.CoroutineExceptionHandler
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TTSSettingsScreen() {
     val context = LocalContext.current
     val prefs = remember { PreferencesManager(context) }
-    val api = remember { GeminiTTSAPI(context.cacheDir) }
-    val scope = rememberCoroutineScope()
-
     var apiKey by remember { mutableStateOf(prefs.geminiApiKey) }
     var showApiKey by remember { mutableStateOf(false) }
     var voiceName by remember { mutableStateOf(prefs.geminiVoiceName) }
@@ -91,29 +85,34 @@ fun TTSSettingsScreen() {
                         if (apiKey.isBlank()) return@OutlinedButton
                         isVerifying = true
                         apiStatus = "Verifying..."
-                        val handler = CoroutineExceptionHandler { _, throwable ->
-                            Log.e("TTSSettings", "Verify coroutine crashed: ${throwable.message}", throwable)
-                            apiStatus = "Error: ${throwable.message ?: "Unexpected crash"}"
-                            isVerifying = false
-                        }
-                        scope.launch(handler) {
+                        Thread {
                             try {
-                                val result = api.verifyApiKey(apiKey)
-                                result.fold(
-                                    onSuccess = {
-                                        apiStatus = "Valid! Gemini TTS is ready"
-                                    },
-                                    onFailure = { error ->
-                                        apiStatus = "Error: ${error.message ?: "Unknown error"}"
-                                    }
-                                )
-                            } catch (e: Throwable) {
-                                Log.e("TTSSettings", "Verify exception: ${e.message}", e)
-                                apiStatus = "Error: ${e.message ?: "Unexpected error"}"
-                            } finally {
-                                isVerifying = false
+                                val url = java.net.URL("https://generativelanguage.googleapis.com/v1beta/models/${prefs.geminiModel}?key=$apiKey")
+                                val conn = url.openConnection() as java.net.HttpURLConnection
+                                conn.requestMethod = "GET"
+                                conn.connectTimeout = 10_000
+                                conn.readTimeout = 10_000
+                                val code = conn.responseCode
+                                conn.disconnect()
+                                val msg = when (code) {
+                                    200 -> "Valid! Gemini TTS is ready"
+                                    401 -> "Error: Invalid API key"
+                                    403 -> "Error: API key not authorized"
+                                    404 -> "Error: TTS model not found"
+                                    429 -> "Error: Rate limited - try later"
+                                    else -> "Error: HTTP $code"
+                                }
+                                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                    apiStatus = msg
+                                    isVerifying = false
+                                }
+                            } catch (e: Exception) {
+                                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                    apiStatus = "Error: ${e.message ?: "Connection failed"}"
+                                    isVerifying = false
+                                }
                             }
-                        }
+                        }.start()
                     },
                     shape = RoundedCornerShape(8.dp),
                     enabled = !isVerifying && apiKey.isNotBlank()

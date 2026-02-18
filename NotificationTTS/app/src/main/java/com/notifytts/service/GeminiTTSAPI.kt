@@ -178,59 +178,35 @@ class GeminiTTSAPI(private val cacheDir: File) {
     }
 
     /**
-     * Verifies that the API key is valid by fetching the TTS model info (lightweight GET).
-     * Does NOT generate audio - just checks the key can access the model.
+     * Verifies the API key with a simple GET to the model endpoint.
+     * Uses HttpURLConnection (not OkHttp) for maximum simplicity/stability.
      */
     suspend fun verifyApiKey(apiKey: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        if (apiKey.isBlank()) {
+            return@withContext Result.failure(Exception("API key is empty"))
+        }
+        var conn: java.net.HttpURLConnection? = null
         try {
-            if (apiKey.isBlank()) {
-                return@withContext Result.failure(Exception("API key is empty"))
+            val url = java.net.URL("$GEMINI_API_BASE/${Constants.DEFAULT_GEMINI_MODEL}?key=$apiKey")
+            conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 10_000
+                readTimeout = 10_000
             }
-
-            // Lightweight: just GET the model info, no audio generation
-            val url = "$GEMINI_API_BASE/${Constants.DEFAULT_GEMINI_MODEL}?key=$apiKey"
-
-            val request = Request.Builder()
-                .url(url)
-                .get()
-                .build()
-
-            val verifyClient = OkHttpClient.Builder()
-                .connectTimeout(15, TimeUnit.SECONDS)
-                .readTimeout(15, TimeUnit.SECONDS)
-                .build()
-
-            var response: okhttp3.Response? = null
-            try {
-                response = verifyClient.newCall(request).execute()
-                val code = response.code
-                val responseBody = try { response.body?.string() ?: "" } catch (_: Exception) { "" }
-
-                when {
-                    response.isSuccessful -> {
-                        Log.d(TAG, "API key verified successfully (model info returned)")
-                        Result.success(true)
-                    }
-                    code == 400 -> {
-                        val detail = extractErrorMessage(responseBody)
-                        Result.failure(Exception("Invalid request${if (detail != null) ": $detail" else ""}"))
-                    }
-                    code == 401 -> Result.failure(Exception("Invalid API key"))
-                    code == 403 -> Result.failure(Exception("API key not authorized for Gemini TTS"))
-                    code == 404 -> Result.failure(Exception("TTS model not found (${Constants.DEFAULT_GEMINI_MODEL}). The model may have been updated."))
-                    code == 429 -> Result.failure(Exception("Rate limited - try again later"))
-                    else -> {
-                        val detail = extractErrorMessage(responseBody)
-                        Result.failure(Exception("API error $code${if (detail != null) ": $detail" else ""}"))
-                    }
-                }
-            } finally {
-                try { response?.close() } catch (_: Exception) {}
+            val code = conn.responseCode
+            conn.disconnect()
+            when (code) {
+                200 -> Result.success(true)
+                401 -> Result.failure(Exception("Invalid API key"))
+                403 -> Result.failure(Exception("API key not authorized"))
+                404 -> Result.failure(Exception("TTS model not found"))
+                429 -> Result.failure(Exception("Rate limited - try again later"))
+                else -> Result.failure(Exception("HTTP error $code"))
             }
-        } catch (e: Throwable) {
-            // Catch Throwable (not just Exception) to prevent any crash
-            Log.e(TAG, "verifyApiKey error: ${e.javaClass.simpleName}: ${e.message}", e)
-            Result.failure(Exception(e.message ?: "Verification failed"))
+        } catch (e: Exception) {
+            Log.e(TAG, "verifyApiKey: ${e.message}")
+            try { conn?.disconnect() } catch (_: Exception) {}
+            Result.failure(Exception(e.message ?: "Connection failed"))
         }
     }
 
