@@ -1,0 +1,16 @@
+{
+  "name": "devex-calculator",
+  "version": "1.0.0",
+  "description": "DevEx Calculator - Roblox to USD & currency converter",
+  "main": "index.js",
+  "scripts": {
+    "build": "echo 'Static web app - no build needed'"
+  },
+  "author": "fiery.fire",
+  "license": "MIT",
+  "dependencies": {
+    "@capacitor/android": "^8.1.0",
+    "@capacitor/cli": "^8.1.0",
+    "@capacitor/core": "^8.1.0"
+  }
+}
