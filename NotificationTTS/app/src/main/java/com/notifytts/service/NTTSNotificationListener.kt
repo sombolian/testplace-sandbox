@@ -71,6 +71,9 @@ class NTTSNotificationListener : NotificationListenerService() {
         // Check audio output
         if (!shouldSpeak()) return
 
+        // Re-check shake settings (picks up changes without service restart)
+        refreshShakeDetector()
+
         // Process notification
         val result = processor.process(sbn)
 
@@ -118,25 +121,43 @@ class NTTSNotificationListener : NotificationListenerService() {
         // Could optionally stop reading if notification was dismissed
     }
 
+    private var shakeEnabled = false
+
     private fun startShakeDetector() {
         if (prefs.shakeToPause) {
+            shakeEnabled = true
             shakeDetector = ShakeDetector(this).apply {
                 setThresholdFromSensitivity(prefs.shakeSensitivity)
                 start {
-                    // Only vibrate if TTS was actually speaking
                     if (ttsManager.isSpeaking()) {
                         Log.d(TAG, "Shake detected - pausing TTS")
                         ttsManager.pause()
-                        // Vibrate to confirm the shake stopped speech
                         val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
                         vibrator?.vibrate(VibrationEffect.createOneShot(300, VibrationEffect.DEFAULT_AMPLITUDE))
-                        // Auto-resume after 5 seconds
                         android.os.Handler(mainLooper).postDelayed({
                             ttsManager.resume()
                         }, 5000)
                     }
                 }
             }
+        }
+    }
+
+    private fun refreshShakeDetector() {
+        val shouldBeEnabled = prefs.shakeToPause
+        val sensitivityChanged = shakeDetector != null && prefs.shakeSensitivity != prefs.shakeSensitivity
+        if (shouldBeEnabled && !shakeEnabled) {
+            // User enabled shake after service started
+            shakeDetector?.stop()
+            startShakeDetector()
+        } else if (!shouldBeEnabled && shakeEnabled) {
+            // User disabled shake
+            shakeDetector?.stop()
+            shakeDetector = null
+            shakeEnabled = false
+        } else if (shouldBeEnabled && shakeEnabled) {
+            // Update sensitivity
+            shakeDetector?.setThresholdFromSensitivity(prefs.shakeSensitivity)
         }
     }
 

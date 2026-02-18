@@ -172,6 +172,16 @@ class PreferencesManager(context: Context) {
         get() = prefs.getBoolean("use_device_tts_only", false)
         set(value) = prefs.edit().putBoolean("use_device_tts_only", value).apply()
 
+    /** Audio usage type for AudioAttributes (e.g. USAGE_NOTIFICATION=5, USAGE_MEDIA=1, USAGE_ALARM=4) */
+    var audioUsageType: Int
+        get() = prefs.getInt("audio_usage_type", 5) // Default: USAGE_NOTIFICATION
+        set(value) = prefs.edit().putInt("audio_usage_type", value).apply()
+
+    /** Strip emojis from text before sending to Gemini */
+    var stripEmojis: Boolean
+        get() = prefs.getBoolean("strip_emojis", false)
+        set(value) = prefs.edit().putBoolean("strip_emojis", value).apply()
+
     // ── Quiet Hours ──────────────────────────────────────────────────
 
     var quietHours: QuietHours

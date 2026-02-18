@@ -25,7 +25,8 @@ class ShakeDetector(context: Context) : SensorEventListener {
     fun start(onShake: () -> Unit) {
         onShakeListener = onShake
         accelerometer?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+            // Use SENSOR_DELAY_GAME for faster detection, especially important when screen is off
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
         }
     }
 

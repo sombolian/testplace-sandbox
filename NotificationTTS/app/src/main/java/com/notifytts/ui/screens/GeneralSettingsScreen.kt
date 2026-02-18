@@ -1,7 +1,9 @@
 package com.notifytts.ui.screens
 
+import android.media.AudioAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -22,6 +24,7 @@ import com.notifytts.data.QuietHours
 import com.notifytts.service.GeminiTTSAPI
 import com.notifytts.service.ShakeDetector
 import com.notifytts.ui.components.*
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -85,6 +88,9 @@ fun GeneralSettingsScreen(
     var maxQueueSize by remember { mutableIntStateOf(prefs.maxQueueSize) }
     var messageFormat by remember { mutableStateOf(prefs.messageFormat) }
 
+    var audioUsageType by remember { mutableIntStateOf(prefs.audioUsageType) }
+    var stripEmojis by remember { mutableStateOf(prefs.stripEmojis) }
+
     var quietHours by remember { mutableStateOf(prefs.quietHours) }
     var logEnabled by remember { mutableStateOf(prefs.logEnabled) }
 
@@ -139,17 +145,28 @@ fun GeneralSettingsScreen(
                             if (apiKey.isBlank()) return@OutlinedButton
                             isVerifying = true
                             apiStatus = "Verifying..."
-                            scope.launch {
-                                val result = api.verifyApiKey(apiKey)
-                                result.fold(
-                                    onSuccess = {
-                                        apiStatus = "Valid! Gemini TTS is ready"
-                                    },
-                                    onFailure = {
-                                        apiStatus = "Error: ${it.message}"
-                                    }
-                                )
+                            val handler = CoroutineExceptionHandler { _, throwable ->
+                                Log.e("Settings", "Verify crashed: ${throwable.message}", throwable)
+                                apiStatus = "Error: ${throwable.message ?: "Unexpected crash"}"
                                 isVerifying = false
+                            }
+                            scope.launch(handler) {
+                                try {
+                                    val result = api.verifyApiKey(apiKey)
+                                    result.fold(
+                                        onSuccess = {
+                                            apiStatus = "Valid! Gemini TTS is ready"
+                                        },
+                                        onFailure = {
+                                            apiStatus = "Error: ${it.message}"
+                                        }
+                                    )
+                                } catch (e: Throwable) {
+                                    Log.e("Settings", "Verify exception: ${e.message}", e)
+                                    apiStatus = "Error: ${e.message ?: "Unexpected error"}"
+                                } finally {
+                                    isVerifying = false
+                                }
                             }
                         },
                         shape = RoundedCornerShape(8.dp),
@@ -252,6 +269,44 @@ fun GeneralSettingsScreen(
                     prefs.alsoSpeaker = it
                 }
             )
+
+            Divider(modifier = Modifier.padding(horizontal = 16.dp))
+
+            // Audio category selector
+            var showAudioCategoryMenu by remember { mutableStateOf(false) }
+            Box {
+                SettingsClickable(
+                    title = "Audio category",
+                    subtitle = when (audioUsageType) {
+                        AudioAttributes.USAGE_NOTIFICATION -> "Notification"
+                        AudioAttributes.USAGE_MEDIA -> "Media"
+                        AudioAttributes.USAGE_ALARM -> "Alarm"
+                        AudioAttributes.USAGE_VOICE_COMMUNICATION -> "Call / Voice"
+                        else -> "Notification"
+                    },
+                    onClick = { showAudioCategoryMenu = true }
+                )
+                DropdownMenu(expanded = showAudioCategoryMenu, onDismissRequest = { showAudioCategoryMenu = false }) {
+                    listOf(
+                        AudioAttributes.USAGE_NOTIFICATION to "Notification",
+                        AudioAttributes.USAGE_MEDIA to "Media",
+                        AudioAttributes.USAGE_ALARM to "Alarm",
+                        AudioAttributes.USAGE_VOICE_COMMUNICATION to "Call / Voice",
+                    ).forEach { (usageId, label) ->
+                        DropdownMenuItem(
+                            text = { Text(label) },
+                            onClick = {
+                                audioUsageType = usageId
+                                prefs.audioUsageType = usageId
+                                showAudioCategoryMenu = false
+                            },
+                            trailingIcon = {
+                                if (audioUsageType == usageId) Icon(Icons.Filled.Check, contentDescription = null)
+                            }
+                        )
+                    }
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -414,6 +469,17 @@ fun GeneralSettingsScreen(
                 onCheckedChange = {
                     readContent = it
                     prefs.readContent = it
+                }
+            )
+            Divider(modifier = Modifier.padding(horizontal = 16.dp))
+
+            SettingsSwitch(
+                title = "Strip emojis",
+                subtitle = "Remove emojis before sending to TTS",
+                checked = stripEmojis,
+                onCheckedChange = {
+                    stripEmojis = it
+                    prefs.stripEmojis = it
                 }
             )
             Divider(modifier = Modifier.padding(horizontal = 16.dp))

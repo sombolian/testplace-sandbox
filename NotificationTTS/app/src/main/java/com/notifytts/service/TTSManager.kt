@@ -6,6 +6,7 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.os.Build
+import android.os.PowerManager
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import com.notifytts.data.PreferencesManager
@@ -43,6 +44,8 @@ class TTSManager(private val context: Context) {
     private var deviceTtsReady = false
     private var focusRequest: AudioFocusRequest? = null
     private var isPaused = false
+    private val wakeLock: PowerManager.WakeLock = (context.getSystemService(Context.POWER_SERVICE) as PowerManager)
+        .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "NotificationTTS:TTSPlayback")
 
     init {
         initDeviceTts()
@@ -105,7 +108,47 @@ class TTSManager(private val context: Context) {
         }
     }
 
+    private fun stripEmojis(text: String): String {
+        val sb = StringBuilder()
+        var i = 0
+        while (i < text.length) {
+            val cp = Character.codePointAt(text, i)
+            val charCount = Character.charCount(cp)
+            if (!isEmoji(cp)) {
+                sb.appendCodePoint(cp)
+            }
+            i += charCount
+        }
+        return sb.toString().replace(Regex("\\s{2,}"), " ").trim()
+    }
+
+    private fun isEmoji(codePoint: Int): Boolean {
+        return codePoint in 0x1F600..0x1F64F || // Emoticons
+               codePoint in 0x1F300..0x1F5FF || // Misc Symbols and Pictographs
+               codePoint in 0x1F680..0x1F6FF || // Transport and Map
+               codePoint in 0x1F900..0x1F9FF || // Supplemental Symbols
+               codePoint in 0x1FA00..0x1FA6F || // Chess Symbols
+               codePoint in 0x1FA70..0x1FAFF || // Symbols Extended-A
+               codePoint in 0x2600..0x26FF ||   // Misc Symbols
+               codePoint in 0x2700..0x27BF ||   // Dingbats
+               codePoint in 0xFE00..0xFE0F ||   // Variation Selectors
+               codePoint == 0x200D ||            // Zero-width joiner (composite emojis)
+               codePoint in 0xE0020..0xE007F || // Tags
+               codePoint in 0x1F1E0..0x1F1FF    // Flags
+    }
+
     private suspend fun speak(item: TTSQueueItem) {
+        // Acquire wakelock to keep sensors (shake detector) alive during playback
+        try { wakeLock.acquire(120_000L) } catch (_: Exception) {}
+
+        try {
+            speakInternal(item)
+        } finally {
+            try { if (wakeLock.isHeld) wakeLock.release() } catch (_: Exception) {}
+        }
+    }
+
+    private suspend fun speakInternal(item: TTSQueueItem) {
         if (prefs.useDeviceTtsOnly) {
             val success = speakWithDeviceTts(item.text)
             item.onResult?.invoke(success, if (success) null else "Device TTS failed")
@@ -123,10 +166,16 @@ class TTSManager(private val context: Context) {
             return
         }
 
-        Log.d(TAG, "Generating TTS: voice=${prefs.geminiVoiceName}, model=${prefs.geminiModel}, text='${item.text.take(50)}...'")
+        val ttsText = if (prefs.stripEmojis) stripEmojis(item.text) else item.text
+        if (ttsText.isBlank()) {
+            item.onResult?.invoke(false, "Text empty after emoji removal")
+            return
+        }
+
+        Log.d(TAG, "Generating TTS: voice=${prefs.geminiVoiceName}, model=${prefs.geminiModel}, text='${ttsText.take(50)}...'")
 
         val result = geminiTTSAPI.synthesize(
-            text = item.text,
+            text = ttsText,
             apiKey = apiKey,
             voiceName = prefs.geminiVoiceName,
             modelId = prefs.geminiModel,
@@ -188,10 +237,11 @@ class TTSManager(private val context: Context) {
         requestAudioFocus()
 
         try {
+            val audioUsage = prefs.audioUsageType
             mediaPlayer = MediaPlayer().apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setUsage(audioUsage)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build()
                 )
@@ -312,10 +362,11 @@ class TTSManager(private val context: Context) {
     }
 
     private fun requestAudioFocus() {
+        val audioUsage = prefs.audioUsageType
         focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
             .setAudioAttributes(
                 AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setUsage(audioUsage)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build()
             )
@@ -348,6 +399,7 @@ class TTSManager(private val context: Context) {
             item?.onResult?.invoke(false, "Paused - cleared from queue")
         }
         abandonAudioFocus()
+        try { if (wakeLock.isHeld) wakeLock.release() } catch (_: Exception) {}
     }
 
     fun resume() {

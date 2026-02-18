@@ -13,6 +13,11 @@ class NotificationProcessor(
 
     private val recentNotifications = mutableMapOf<String, Long>()
 
+    /** Strip invisible Unicode characters (RTL/LTR marks, zero-width chars, bidi controls) */
+    private fun stripInvisibleChars(text: String): String {
+        return text.replace(Regex("[\u200B-\u200F\u2028-\u202F\u2060-\u206F\uFEFF]"), "")
+    }
+
     data class ProcessResult(
         val shouldRead: Boolean,
         val text: String = "",
@@ -76,18 +81,20 @@ class NotificationProcessor(
         }
 
         // Check keyword rules
-        val fullText = "$title $content"
+        // Strip invisible Unicode chars (RTL marks, zero-width spaces, etc.) so Hebrew rules match
+        val fullText = stripInvisibleChars("$title $content")
         val keywordRules = prefs.getKeywordRules()
 
         for (rule in keywordRules) {
+            val cleanPattern = stripInvisibleChars(rule.pattern)
             val matches = if (rule.isRegex) {
                 try {
-                    Regex(rule.pattern, RegexOption.IGNORE_CASE).containsMatchIn(fullText)
+                    Regex(cleanPattern, RegexOption.IGNORE_CASE).containsMatchIn(fullText)
                 } catch (e: Exception) {
                     false
                 }
             } else {
-                fullText.contains(rule.pattern, ignoreCase = true)
+                fullText.contains(cleanPattern, ignoreCase = true)
             }
 
             when (rule.action) {
