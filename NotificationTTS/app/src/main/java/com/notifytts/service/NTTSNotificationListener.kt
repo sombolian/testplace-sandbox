@@ -21,6 +21,7 @@ class NTTSNotificationListener : NotificationListenerService() {
     private lateinit var ttsManager: TTSManager
     private lateinit var bluetoothMonitor: BluetoothMonitor
     private lateinit var processor: NotificationProcessor
+    private var shakeDetector: ShakeDetector? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -33,6 +34,8 @@ class NTTSNotificationListener : NotificationListenerService() {
             Log.d(TAG, "Audio device connection changed: $connected")
         }
 
+        startShakeDetector()
+
         isRunning = true
         Log.i(TAG, "Notification listener started")
     }
@@ -40,6 +43,7 @@ class NTTSNotificationListener : NotificationListenerService() {
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
+        shakeDetector?.stop()
         ttsManager.destroy()
         bluetoothMonitor.stopMonitoring()
         Log.i(TAG, "Notification listener stopped")
@@ -90,6 +94,22 @@ class NTTSNotificationListener : NotificationListenerService() {
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
         // Could optionally stop reading if notification was dismissed
+    }
+
+    private fun startShakeDetector() {
+        if (prefs.shakeToPause) {
+            shakeDetector = ShakeDetector(this).apply {
+                setThresholdFromSensitivity(prefs.shakeSensitivity)
+                start {
+                    Log.d(TAG, "Shake detected - pausing TTS")
+                    ttsManager.pause()
+                    // Auto-resume after 5 seconds
+                    android.os.Handler(mainLooper).postDelayed({
+                        ttsManager.resume()
+                    }, 5000)
+                }
+            }
+        }
     }
 
     private fun shouldSpeak(): Boolean {

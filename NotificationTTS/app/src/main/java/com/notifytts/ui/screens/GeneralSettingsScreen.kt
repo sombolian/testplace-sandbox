@@ -1,5 +1,8 @@
 package com.notifytts.ui.screens
 
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.notifytts.data.PreferencesManager
 import com.notifytts.data.QuietHours
+import com.notifytts.service.ShakeDetector
 import com.notifytts.ui.components.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -30,6 +34,39 @@ fun GeneralSettingsScreen(
     var respectDnd by remember { mutableStateOf(prefs.respectDoNotDisturb) }
     var screenOffOnly by remember { mutableStateOf(prefs.screenOffOnly) }
     var shakeToPause by remember { mutableStateOf(prefs.shakeToPause) }
+    var shakeSensitivity by remember { mutableIntStateOf(prefs.shakeSensitivity) }
+    var isTestingShake by remember { mutableStateOf(false) }
+
+    // Shake test
+    val shakeDetector = remember { ShakeDetector(context) }
+    DisposableEffect(Unit) {
+        onDispose { shakeDetector.stop() }
+    }
+
+    // When test mode changes, start/stop detector
+    LaunchedEffect(isTestingShake) {
+        if (isTestingShake) {
+            shakeDetector.setThresholdFromSensitivity(shakeSensitivity)
+            shakeDetector.start {
+                // Vibrate
+                val vibrator = context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? Vibrator
+                vibrator?.vibrate(VibrationEffect.createOneShot(300, VibrationEffect.DEFAULT_AMPLITUDE))
+                // Toast
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    Toast.makeText(context, "Shake detected!", Toast.LENGTH_SHORT).show()
+                    isTestingShake = false
+                }
+            }
+            // Auto-stop after 5 seconds
+            kotlinx.coroutines.delay(5000)
+            if (isTestingShake) {
+                isTestingShake = false
+                shakeDetector.stop()
+            }
+        } else {
+            shakeDetector.stop()
+        }
+    }
 
     var ignoreOngoing by remember { mutableStateOf(prefs.ignoreOngoing) }
     var ignoreGroupSummary by remember { mutableStateOf(prefs.ignoreGroupSummary) }
@@ -123,6 +160,52 @@ fun GeneralSettingsScreen(
                     prefs.shakeToPause = it
                 }
             )
+
+            if (shakeToPause) {
+                Divider(modifier = Modifier.padding(horizontal = 16.dp))
+                SliderSetting(
+                    title = "Shake sensitivity",
+                    value = shakeSensitivity.toFloat(),
+                    onValueChange = {
+                        shakeSensitivity = it.toInt()
+                        prefs.shakeSensitivity = it.toInt()
+                    },
+                    valueRange = 1f..10f,
+                    steps = 8,
+                    valueLabel = when {
+                        shakeSensitivity <= 3 -> "$shakeSensitivity (Hard)"
+                        shakeSensitivity <= 7 -> "$shakeSensitivity (Medium)"
+                        else -> "$shakeSensitivity (Light)"
+                    }
+                )
+                Divider(modifier = Modifier.padding(horizontal = 16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (isTestingShake) "Shake now!" else "Test shake detection",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Text(
+                            text = if (isTestingShake) "Waiting for shake... (5s)"
+                            else "Vibrates when shake is detected",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Button(
+                        onClick = { isTestingShake = !isTestingShake },
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(if (isTestingShake) "Stop" else "Test")
+                    }
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(8.dp))

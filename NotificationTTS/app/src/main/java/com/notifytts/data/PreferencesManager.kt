@@ -42,6 +42,10 @@ class PreferencesManager(context: Context) {
         get() = prefs.getBoolean("shake_to_pause", false)
         set(value) = prefs.edit().putBoolean("shake_to_pause", value).apply()
 
+    var shakeSensitivity: Int
+        get() = prefs.getInt("shake_sensitivity", 5)
+        set(value) = prefs.edit().putInt("shake_sensitivity", value.coerceIn(1, 10)).apply()
+
     // ── App Filter ───────────────────────────────────────────────────
 
     var appFilterMode: FilterMode

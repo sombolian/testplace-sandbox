@@ -159,8 +159,12 @@ class TTSManager(private val context: Context) {
                 }
 
                 // Apply speed if supported
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && prefs.ttsSpeed != 1.0f) {
-                    playbackParams = playbackParams.setSpeed(prefs.ttsSpeed)
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && prefs.ttsSpeed != 1.0f) {
+                        playbackParams = playbackParams.setSpeed(prefs.ttsSpeed)
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not set playback speed: ${e.message}")
                 }
 
                 start()

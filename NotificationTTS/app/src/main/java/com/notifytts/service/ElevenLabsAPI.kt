@@ -44,6 +44,10 @@ class ElevenLabsAPI(private val cacheDir: File) {
                     addProperty("style", style)
                     addProperty("use_speaker_boost", true)
                 })
+                // Detect Hebrew text and hint the language
+                if (text.any { it in '\u0590'..'\u05FF' || it in '\uFB1D'..'\uFB4F' }) {
+                    addProperty("language_code", "he")
+                }
             }
 
             val url = "${Constants.ELEVENLABS_BASE_URL}/text-to-speech/$voiceId" +

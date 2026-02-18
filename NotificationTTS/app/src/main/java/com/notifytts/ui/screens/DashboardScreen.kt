@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -21,11 +22,13 @@ import androidx.compose.ui.unit.dp
 import com.notifytts.data.PreferencesManager
 import com.notifytts.service.BluetoothMonitor
 import com.notifytts.service.NTTSNotificationListener
+import com.notifytts.service.TTSManager
 import com.notifytts.ui.components.SettingsCard
 import com.notifytts.ui.components.StatusIndicator
 import com.notifytts.ui.theme.StatusActive
 import com.notifytts.ui.theme.StatusInactive
 import com.notifytts.ui.theme.StatusWarning
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,12 +38,19 @@ fun DashboardScreen(
     val context = LocalContext.current
     val prefs = remember { PreferencesManager(context) }
     val bluetoothMonitor = remember { BluetoothMonitor(context) }
+    val ttsManager = remember { TTSManager(context) }
+    val scope = rememberCoroutineScope()
     var serviceEnabled by remember { mutableStateOf(prefs.serviceEnabled) }
     var isListenerEnabled by remember { mutableStateOf(isNotificationListenerEnabled(context)) }
     var isBtConnected by remember { mutableStateOf(bluetoothMonitor.isBluetoothAudioConnected()) }
     var hasApiKey by remember { mutableStateOf(prefs.elevenLabsApiKey.isNotBlank()) }
     var testText by remember { mutableStateOf("") }
     var showTestDialog by remember { mutableStateOf(false) }
+    var isSpeaking by remember { mutableStateOf(false) }
+
+    DisposableEffect(Unit) {
+        onDispose { ttsManager.destroy() }
+    }
 
     // Refresh state periodically
     LaunchedEffect(Unit) {
@@ -237,11 +247,13 @@ fun DashboardScreen(
                 Button(
                     onClick = {
                         if (testText.isNotBlank()) {
-                            val ttsManager = com.notifytts.service.TTSManager(context)
+                            isSpeaking = true
                             ttsManager.enqueue(testText)
+                            Toast.makeText(context, "Speaking...", Toast.LENGTH_SHORT).show()
                         }
                         showTestDialog = false
-                    }
+                    },
+                    enabled = !isSpeaking
                 ) {
                     Text("Speak")
                 }

@@ -109,18 +109,25 @@ fun TTSSettingsScreen() {
                             if (apiKey.isBlank()) return@OutlinedButton
                             isLoadingVoices = true
                             scope.launch {
-                                val result = api.getVoices(apiKey)
-                                result.fold(
-                                    onSuccess = { voiceList ->
-                                        voices = voiceList
-                                        prefs.setCachedVoices(voiceList)
-                                        showVoicePicker = true
-                                    },
-                                    onFailure = {
-                                        apiStatus = "Failed to load voices: ${it.message}"
-                                    }
-                                )
-                                isLoadingVoices = false
+                                try {
+                                    val result = api.getVoices(apiKey)
+                                    result.fold(
+                                        onSuccess = { voiceList ->
+                                            voices = voiceList
+                                            try {
+                                                prefs.setCachedVoices(voiceList)
+                                            } catch (_: Exception) {}
+                                            showVoicePicker = true
+                                        },
+                                        onFailure = {
+                                            apiStatus = "Failed to load voices: ${it.message}"
+                                        }
+                                    )
+                                } catch (e: Exception) {
+                                    apiStatus = "Error: ${e.message}"
+                                } finally {
+                                    isLoadingVoices = false
+                                }
                             }
                         },
                         shape = RoundedCornerShape(8.dp),
@@ -162,18 +169,23 @@ fun TTSSettingsScreen() {
                     } else if (apiKey.isNotBlank()) {
                         isLoadingVoices = true
                         scope.launch {
-                            val result = api.getVoices(apiKey)
-                            result.fold(
-                                onSuccess = { voiceList ->
-                                    voices = voiceList
-                                    prefs.setCachedVoices(voiceList)
-                                    showVoicePicker = true
-                                },
-                                onFailure = {
-                                    apiStatus = "Failed to load voices"
-                                }
-                            )
-                            isLoadingVoices = false
+                            try {
+                                val result = api.getVoices(apiKey)
+                                result.fold(
+                                    onSuccess = { voiceList ->
+                                        voices = voiceList
+                                        try { prefs.setCachedVoices(voiceList) } catch (_: Exception) {}
+                                        showVoicePicker = true
+                                    },
+                                    onFailure = {
+                                        apiStatus = "Failed to load voices"
+                                    }
+                                )
+                            } catch (e: Exception) {
+                                apiStatus = "Error: ${e.message}"
+                            } finally {
+                                isLoadingVoices = false
+                            }
                         }
                     }
                 }
