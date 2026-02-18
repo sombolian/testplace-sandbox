@@ -43,7 +43,7 @@ fun DashboardScreen(
     var serviceEnabled by remember { mutableStateOf(prefs.serviceEnabled) }
     var isListenerEnabled by remember { mutableStateOf(isNotificationListenerEnabled(context)) }
     var isBtConnected by remember { mutableStateOf(bluetoothMonitor.isBluetoothAudioConnected()) }
-    var hasApiKey by remember { mutableStateOf(prefs.elevenLabsApiKey.isNotBlank()) }
+    var hasApiKey by remember { mutableStateOf(prefs.geminiApiKey.isNotBlank()) }
     var testText by remember { mutableStateOf("") }
     var showTestDialog by remember { mutableStateOf(false) }
 
@@ -56,7 +56,7 @@ fun DashboardScreen(
         while (true) {
             isListenerEnabled = isNotificationListenerEnabled(context)
             isBtConnected = bluetoothMonitor.isBluetoothAudioConnected()
-            hasApiKey = prefs.elevenLabsApiKey.isNotBlank()
+            hasApiKey = prefs.geminiApiKey.isNotBlank()
             serviceEnabled = prefs.serviceEnabled
             kotlinx.coroutines.delay(2000)
         }
@@ -105,7 +105,7 @@ fun DashboardScreen(
                 Text(
                     text = if (!isListenerEnabled) "Notification access not granted"
                     else if (!serviceEnabled) "Service is disabled"
-                    else if (!hasApiKey) "ElevenLabs API key not set"
+                    else if (!hasApiKey) "Gemini API key not set"
                     else if (isBtConnected) "Listening via Bluetooth"
                     else "Waiting for Bluetooth connection",
                     style = MaterialTheme.typography.bodyMedium,
@@ -156,7 +156,7 @@ fun DashboardScreen(
             Divider(modifier = Modifier.padding(horizontal = 16.dp))
             StatusRow(
                 icon = Icons.Filled.Key,
-                title = "ElevenLabs API",
+                title = "Gemini API",
                 isActive = hasApiKey,
                 actionLabel = if (!hasApiKey) "Setup" else null,
                 onAction = onNavigateToTTSSettings
@@ -231,7 +231,7 @@ fun DashboardScreen(
             title = { Text("Test TTS") },
             text = {
                 Column {
-                    Text("Enter text to test (supports Hebrew):")
+                    Text("Enter text to test (any language):")
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = testText,

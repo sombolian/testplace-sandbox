@@ -15,9 +15,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import com.notifytts.data.ElevenLabsVoice
+import com.notifytts.data.GeminiVoice
 import com.notifytts.data.PreferencesManager
-import com.notifytts.service.ElevenLabsAPI
+import com.notifytts.service.GeminiTTSAPI
 import com.notifytts.ui.components.*
 import kotlinx.coroutines.launch
 
@@ -26,25 +26,20 @@ import kotlinx.coroutines.launch
 fun TTSSettingsScreen() {
     val context = LocalContext.current
     val prefs = remember { PreferencesManager(context) }
-    val api = remember { ElevenLabsAPI(context.cacheDir) }
+    val api = remember { GeminiTTSAPI(context.cacheDir) }
     val scope = rememberCoroutineScope()
 
-    var apiKey by remember { mutableStateOf(prefs.elevenLabsApiKey) }
+    var apiKey by remember { mutableStateOf(prefs.geminiApiKey) }
     var showApiKey by remember { mutableStateOf(false) }
-    var voiceId by remember { mutableStateOf(prefs.elevenLabsVoiceId) }
-    var voiceName by remember { mutableStateOf(prefs.elevenLabsVoiceName) }
-    var model by remember { mutableStateOf(prefs.elevenLabsModel) }
-    var stability by remember { mutableFloatStateOf(prefs.ttsStability) }
-    var similarity by remember { mutableFloatStateOf(prefs.ttsSimilarityBoost) }
-    var style by remember { mutableFloatStateOf(prefs.ttsStyle) }
+    var voiceName by remember { mutableStateOf(prefs.geminiVoiceName) }
+    var model by remember { mutableStateOf(prefs.geminiModel) }
     var speed by remember { mutableFloatStateOf(prefs.ttsSpeed) }
     var fallbackTts by remember { mutableStateOf(prefs.fallbackToDeviceTts) }
     var useDeviceOnly by remember { mutableStateOf(prefs.useDeviceTtsOnly) }
 
-    var voices by remember { mutableStateOf(prefs.getCachedVoices()) }
-    var isLoadingVoices by remember { mutableStateOf(false) }
     var showVoicePicker by remember { mutableStateOf(false) }
     var apiStatus by remember { mutableStateOf("") }
+    var isVerifying by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -52,8 +47,8 @@ fun TTSSettingsScreen() {
             .verticalScroll(rememberScrollState())
             .padding(bottom = 80.dp)
     ) {
-        // ElevenLabs API Key
-        SectionHeader("ElevenLabs API")
+        // Gemini API Key
+        SectionHeader("Gemini API")
 
         SettingsCard {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -61,10 +56,10 @@ fun TTSSettingsScreen() {
                     value = apiKey,
                     onValueChange = {
                         apiKey = it
-                        prefs.elevenLabsApiKey = it
+                        prefs.geminiApiKey = it
                     },
                     label = { Text("API Key") },
-                    placeholder = { Text("Enter your ElevenLabs API key") },
+                    placeholder = { Text("Enter your Google AI Studio API key") },
                     visualTransformation = if (showApiKey) VisualTransformation.None
                     else PasswordVisualTransformation(),
                     trailingIcon = {
@@ -80,65 +75,41 @@ fun TTSSettingsScreen() {
                     shape = RoundedCornerShape(12.dp)
                 )
 
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Get your free API key from Google AI Studio",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
                 Spacer(modifier = Modifier.height(8.dp))
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        onClick = {
-                            if (apiKey.isBlank()) return@OutlinedButton
-                            scope.launch {
-                                apiStatus = "Checking..."
-                                val result = api.getSubscriptionInfo(apiKey)
-                                result.fold(
-                                    onSuccess = { (used, limit) ->
-                                        apiStatus = "Valid! Characters: $used / $limit"
-                                    },
-                                    onFailure = {
-                                        apiStatus = "Error: ${it.message}"
-                                    }
-                                )
-                            }
-                        },
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text("Verify")
-                    }
-
-                    OutlinedButton(
-                        onClick = {
-                            if (apiKey.isBlank()) return@OutlinedButton
-                            isLoadingVoices = true
-                            scope.launch {
-                                try {
-                                    val result = api.getVoices(apiKey)
-                                    result.fold(
-                                        onSuccess = { voiceList ->
-                                            voices = voiceList
-                                            try {
-                                                prefs.setCachedVoices(voiceList)
-                                            } catch (_: Exception) {}
-                                            showVoicePicker = true
-                                        },
-                                        onFailure = {
-                                            apiStatus = "Failed to load voices: ${it.message}"
-                                        }
-                                    )
-                                } catch (e: Exception) {
-                                    apiStatus = "Error: ${e.message}"
-                                } finally {
-                                    isLoadingVoices = false
+                OutlinedButton(
+                    onClick = {
+                        if (apiKey.isBlank()) return@OutlinedButton
+                        isVerifying = true
+                        apiStatus = "Verifying..."
+                        scope.launch {
+                            val result = api.verifyApiKey(apiKey)
+                            result.fold(
+                                onSuccess = {
+                                    apiStatus = "Valid! Gemini TTS is ready"
+                                },
+                                onFailure = {
+                                    apiStatus = "Error: ${it.message}"
                                 }
-                            }
-                        },
-                        shape = RoundedCornerShape(8.dp),
-                        enabled = !isLoadingVoices
-                    ) {
-                        if (isLoadingVoices) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                            Spacer(modifier = Modifier.width(8.dp))
+                            )
+                            isVerifying = false
                         }
-                        Text("Load Voices")
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    enabled = !isVerifying && apiKey.isNotBlank()
+                ) {
+                    if (isVerifying) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
                     }
+                    Text("Verify")
                 }
 
                 if (apiStatus.isNotBlank()) {
@@ -160,35 +131,15 @@ fun TTSSettingsScreen() {
         SectionHeader("Voice")
 
         SettingsCard {
+            val selectedVoice = GeminiTTSAPI.VOICES.find { it.name == voiceName }
             SettingsClickable(
                 title = "Voice",
-                subtitle = voiceName,
-                onClick = {
-                    if (voices.isNotEmpty()) {
-                        showVoicePicker = true
-                    } else if (apiKey.isNotBlank()) {
-                        isLoadingVoices = true
-                        scope.launch {
-                            try {
-                                val result = api.getVoices(apiKey)
-                                result.fold(
-                                    onSuccess = { voiceList ->
-                                        voices = voiceList
-                                        try { prefs.setCachedVoices(voiceList) } catch (_: Exception) {}
-                                        showVoicePicker = true
-                                    },
-                                    onFailure = {
-                                        apiStatus = "Failed to load voices"
-                                    }
-                                )
-                            } catch (e: Exception) {
-                                apiStatus = "Error: ${e.message}"
-                            } finally {
-                                isLoadingVoices = false
-                            }
-                        }
-                    }
-                }
+                subtitle = if (selectedVoice != null) {
+                    "${selectedVoice.name} - ${selectedVoice.description} (${selectedVoice.gender})"
+                } else {
+                    voiceName
+                },
+                onClick = { showVoicePicker = true }
             )
 
             Divider(modifier = Modifier.padding(horizontal = 16.dp))
@@ -199,26 +150,22 @@ fun TTSSettingsScreen() {
                 SettingsClickable(
                     title = "Model",
                     subtitle = when (model) {
-                        "eleven_multilingual_v2" -> "Multilingual v2 (Hebrew)"
-                        "eleven_turbo_v2_5" -> "Turbo v2.5 (Fast, multilingual)"
-                        "eleven_turbo_v2" -> "Turbo v2 (Fastest, English)"
-                        "eleven_multilingual_v1" -> "Multilingual v1"
-                        "eleven_monolingual_v1" -> "Monolingual v1 (English)"
+                        "gemini-2.5-pro-preview-tts" -> "Pro (Highest quality)"
+                        "gemini-2.5-flash-preview-tts" -> "Flash (Fast, low latency)"
                         else -> model
                     },
                     onClick = { showModelMenu = true }
                 )
                 DropdownMenu(expanded = showModelMenu, onDismissRequest = { showModelMenu = false }) {
                     listOf(
-                        "eleven_multilingual_v2" to "Multilingual v2 (Best for Hebrew)",
-                        "eleven_turbo_v2_5" to "Turbo v2.5 (Fast, multilingual)",
-                        "eleven_turbo_v2" to "Turbo v2 (Fastest, English only)",
+                        "gemini-2.5-flash-preview-tts" to "Flash (Fast, low latency)",
+                        "gemini-2.5-pro-preview-tts" to "Pro (Highest quality)",
                     ).forEach { (id, label) ->
                         DropdownMenuItem(
                             text = { Text(label) },
                             onClick = {
                                 model = id
-                                prefs.elevenLabsModel = id
+                                prefs.geminiModel = id
                                 showModelMenu = false
                             },
                             trailingIcon = {
@@ -233,36 +180,9 @@ fun TTSSettingsScreen() {
         Spacer(modifier = Modifier.height(8.dp))
 
         // Voice parameters
-        SectionHeader("Voice Parameters")
+        SectionHeader("Playback")
 
         SettingsCard {
-            SliderSetting(
-                title = "Stability",
-                value = stability,
-                onValueChange = {
-                    stability = it
-                    prefs.ttsStability = it
-                }
-            )
-            Divider(modifier = Modifier.padding(horizontal = 16.dp))
-            SliderSetting(
-                title = "Similarity Boost",
-                value = similarity,
-                onValueChange = {
-                    similarity = it
-                    prefs.ttsSimilarityBoost = it
-                }
-            )
-            Divider(modifier = Modifier.padding(horizontal = 16.dp))
-            SliderSetting(
-                title = "Style",
-                value = style,
-                onValueChange = {
-                    style = it
-                    prefs.ttsStyle = it
-                }
-            )
-            Divider(modifier = Modifier.padding(horizontal = 16.dp))
             SliderSetting(
                 title = "Speed",
                 value = speed,
@@ -277,13 +197,34 @@ fun TTSSettingsScreen() {
 
         Spacer(modifier = Modifier.height(8.dp))
 
+        // Language info
+        SectionHeader("Languages")
+
+        SettingsCard {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Automatic language detection",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Gemini TTS automatically detects the language of your text and speaks in that language. Supports 72+ languages including Hebrew, Arabic, English, French, German, Spanish, Japanese, Korean, Chinese, and many more.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         // Fallback settings
         SectionHeader("Fallback")
 
         SettingsCard {
             SettingsSwitch(
                 title = "Use device TTS only",
-                subtitle = "Skip ElevenLabs, use Android built-in TTS",
+                subtitle = "Skip Gemini, use Android built-in TTS",
                 checked = useDeviceOnly,
                 onCheckedChange = {
                     useDeviceOnly = it
@@ -293,7 +234,7 @@ fun TTSSettingsScreen() {
             Divider(modifier = Modifier.padding(horizontal = 16.dp))
             SettingsSwitch(
                 title = "Fallback to device TTS",
-                subtitle = "Use device TTS if ElevenLabs fails",
+                subtitle = "Use device TTS if Gemini fails",
                 checked = fallbackTts,
                 onCheckedChange = {
                     fallbackTts = it
@@ -307,13 +248,11 @@ fun TTSSettingsScreen() {
     // Voice picker dialog
     if (showVoicePicker) {
         VoicePickerDialog(
-            voices = voices,
-            selectedVoiceId = voiceId,
+            voices = GeminiTTSAPI.VOICES,
+            selectedVoiceName = voiceName,
             onSelect = { voice ->
-                voiceId = voice.voiceId
                 voiceName = voice.name
-                prefs.elevenLabsVoiceId = voice.voiceId
-                prefs.elevenLabsVoiceName = voice.name
+                prefs.geminiVoiceName = voice.name
                 showVoicePicker = false
             },
             onDismiss = { showVoicePicker = false }
@@ -321,19 +260,23 @@ fun TTSSettingsScreen() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun VoicePickerDialog(
-    voices: List<ElevenLabsVoice>,
-    selectedVoiceId: String,
-    onSelect: (ElevenLabsVoice) -> Unit,
+    voices: List<GeminiVoice>,
+    selectedVoiceName: String,
+    onSelect: (GeminiVoice) -> Unit,
     onDismiss: () -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    val filteredVoices = remember(searchQuery, voices) {
-        if (searchQuery.isBlank()) voices
-        else voices.filter {
-            it.name.contains(searchQuery, ignoreCase = true) ||
-                    it.category.contains(searchQuery, ignoreCase = true)
+    var filterGender by remember { mutableStateOf("All") }
+    val filteredVoices = remember(searchQuery, filterGender, voices) {
+        voices.filter { voice ->
+            val matchesSearch = searchQuery.isBlank() ||
+                    voice.name.contains(searchQuery, ignoreCase = true) ||
+                    voice.description.contains(searchQuery, ignoreCase = true)
+            val matchesGender = filterGender == "All" || voice.gender == filterGender
+            matchesSearch && matchesGender
         }
     }
 
@@ -341,7 +284,7 @@ private fun VoicePickerDialog(
         onDismissRequest = onDismiss,
         title = { Text("Select Voice") },
         text = {
-            Column(modifier = Modifier.heightIn(max = 400.dp)) {
+            Column(modifier = Modifier.heightIn(max = 450.dp)) {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
@@ -351,13 +294,26 @@ private fun VoicePickerDialog(
                     shape = RoundedCornerShape(8.dp)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
+
+                // Gender filter chips
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("All", "Female", "Male").forEach { gender ->
+                        FilterChip(
+                            selected = filterGender == gender,
+                            onClick = { filterGender = gender },
+                            label = { Text(gender) }
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+
                 LazyColumn(modifier = Modifier.weight(1f, false)) {
                     items(filteredVoices.size) { index ->
                         val voice = filteredVoices[index]
                         Surface(
                             onClick = { onSelect(voice) },
                             modifier = Modifier.fillMaxWidth(),
-                            color = if (voice.voiceId == selectedVoiceId)
+                            color = if (voice.name == selectedVoiceName)
                                 MaterialTheme.colorScheme.primaryContainer
                             else MaterialTheme.colorScheme.surface
                         ) {
@@ -373,15 +329,13 @@ private fun VoicePickerDialog(
                                         style = MaterialTheme.typography.bodyLarge,
                                         fontWeight = FontWeight.Medium
                                     )
-                                    if (voice.category.isNotBlank()) {
-                                        Text(
-                                            text = voice.category,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
+                                    Text(
+                                        text = "${voice.gender} - ${voice.description}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
-                                if (voice.voiceId == selectedVoiceId) {
+                                if (voice.name == selectedVoiceName) {
                                     Icon(
                                         Icons.Filled.Check,
                                         contentDescription = null,

@@ -144,37 +144,21 @@ class PreferencesManager(context: Context) {
         get() = prefs.getInt("max_text_length", Constants.MAX_TEXT_LENGTH)
         set(value) = prefs.edit().putInt("max_text_length", value).apply()
 
-    // ── TTS / ElevenLabs ─────────────────────────────────────────────
+    // ── TTS / Gemini ──────────────────────────────────────────────────
 
-    var elevenLabsApiKey: String
-        get() = prefs.getString("elevenlabs_api_key", "") ?: ""
-        set(value) = prefs.edit().putString("elevenlabs_api_key", value).apply()
+    var geminiApiKey: String
+        get() = prefs.getString("gemini_api_key", "") ?: ""
+        set(value) = prefs.edit().putString("gemini_api_key", value).apply()
 
-    var elevenLabsVoiceId: String
-        get() = prefs.getString("elevenlabs_voice_id", Constants.DEFAULT_VOICE_ID)
-            ?: Constants.DEFAULT_VOICE_ID
-        set(value) = prefs.edit().putString("elevenlabs_voice_id", value).apply()
+    var geminiVoiceName: String
+        get() = prefs.getString("gemini_voice_name", Constants.DEFAULT_VOICE_NAME)
+            ?: Constants.DEFAULT_VOICE_NAME
+        set(value) = prefs.edit().putString("gemini_voice_name", value).apply()
 
-    var elevenLabsVoiceName: String
-        get() = prefs.getString("elevenlabs_voice_name", "Rachel") ?: "Rachel"
-        set(value) = prefs.edit().putString("elevenlabs_voice_name", value).apply()
-
-    var elevenLabsModel: String
-        get() = prefs.getString("elevenlabs_model", Constants.DEFAULT_MODEL)
-            ?: Constants.DEFAULT_MODEL
-        set(value) = prefs.edit().putString("elevenlabs_model", value).apply()
-
-    var ttsStability: Float
-        get() = prefs.getFloat("tts_stability", Constants.DEFAULT_STABILITY)
-        set(value) = prefs.edit().putFloat("tts_stability", value).apply()
-
-    var ttsSimilarityBoost: Float
-        get() = prefs.getFloat("tts_similarity", Constants.DEFAULT_SIMILARITY_BOOST)
-        set(value) = prefs.edit().putFloat("tts_similarity", value).apply()
-
-    var ttsStyle: Float
-        get() = prefs.getFloat("tts_style", Constants.DEFAULT_STYLE)
-        set(value) = prefs.edit().putFloat("tts_style", value).apply()
+    var geminiModel: String
+        get() = prefs.getString("gemini_model", Constants.DEFAULT_GEMINI_MODEL)
+            ?: Constants.DEFAULT_GEMINI_MODEL
+        set(value) = prefs.edit().putString("gemini_model", value).apply()
 
     var ttsSpeed: Float
         get() = prefs.getFloat("tts_speed", Constants.DEFAULT_SPEED)
@@ -247,21 +231,5 @@ class PreferencesManager(context: Context) {
 
     fun clearLog() {
         prefs.edit().remove("notification_log").apply()
-    }
-
-    // ── Cached voices ────────────────────────────────────────────────
-
-    fun getCachedVoices(): List<ElevenLabsVoice> {
-        val json = prefs.getString("cached_voices", null) ?: return emptyList()
-        val type = object : TypeToken<List<ElevenLabsVoice>>() {}.type
-        return try {
-            gson.fromJson(json, type) ?: emptyList()
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    fun setCachedVoices(voices: List<ElevenLabsVoice>) {
-        prefs.edit().putString("cached_voices", gson.toJson(voices)).apply()
     }
 }

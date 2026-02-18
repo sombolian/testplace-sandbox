@@ -35,11 +35,10 @@ data class NotificationLogEntry(
     val skipReason: String? = null
 )
 
-data class ElevenLabsVoice(
-    val voiceId: String,
+data class GeminiVoice(
     val name: String,
-    val category: String = "",
-    val previewUrl: String? = null
+    val gender: String = "",
+    val description: String = ""
 )
 
 data class QuietHours(

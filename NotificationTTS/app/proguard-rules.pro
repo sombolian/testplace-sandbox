@@ -1,2 +1,2 @@
-# Keep ElevenLabs models
+# Keep data models
 -keep class com.notifytts.data.** { *; }

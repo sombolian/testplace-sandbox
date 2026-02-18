@@ -23,7 +23,7 @@ class TTSManager(private val context: Context) {
     }
 
     private val prefs = PreferencesManager(context)
-    private val elevenLabsAPI = ElevenLabsAPI(context.cacheDir)
+    private val geminiTTSAPI = GeminiTTSAPI(context.cacheDir)
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val queue = ConcurrentLinkedQueue<String>()
@@ -93,7 +93,7 @@ class TTSManager(private val context: Context) {
             return
         }
 
-        val apiKey = prefs.elevenLabsApiKey
+        val apiKey = prefs.geminiApiKey
         if (apiKey.isBlank()) {
             if (prefs.fallbackToDeviceTts) {
                 speakWithDeviceTts(text)
@@ -101,14 +101,11 @@ class TTSManager(private val context: Context) {
             return
         }
 
-        val result = elevenLabsAPI.synthesize(
+        val result = geminiTTSAPI.synthesize(
             text = text,
             apiKey = apiKey,
-            voiceId = prefs.elevenLabsVoiceId,
-            modelId = prefs.elevenLabsModel,
-            stability = prefs.ttsStability,
-            similarityBoost = prefs.ttsSimilarityBoost,
-            style = prefs.ttsStyle,
+            voiceName = prefs.geminiVoiceName,
+            modelId = prefs.geminiModel,
             speed = prefs.ttsSpeed
         )
 
@@ -117,7 +114,7 @@ class TTSManager(private val context: Context) {
                 playAudioFile(audioFile)
             },
             onFailure = { error ->
-                Log.e(TAG, "ElevenLabs failed: ${error.message}")
+                Log.e(TAG, "Gemini TTS failed: ${error.message}")
                 if (prefs.fallbackToDeviceTts) {
                     speakWithDeviceTts(text)
                 }
@@ -261,6 +258,6 @@ class TTSManager(private val context: Context) {
         pause()
         scope.cancel()
         deviceTts?.shutdown()
-        elevenLabsAPI.cleanup()
+        geminiTTSAPI.cleanup()
     }
 }

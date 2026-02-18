@@ -11,16 +11,13 @@
     <string name="test_tts">&#x05D1;&#x05D3;&#x05D9;&#x05E7;&#x05EA; &#x05D4;&#x05E7;&#x05E8;&#x05D0;&#x05D4;</string>
     <string name="test_tts_hint">&#x05D4;&#x05DB;&#x05E0;&#x05E1; &#x05D8;&#x05E7;&#x05E1;&#x05D8; &#x05DC;&#x05D1;&#x05D3;&#x05D9;&#x05E7;&#x05D4;</string>
     <string name="test_tts_default">&#x05E9;&#x05DC;&#x05D5;&#x05DD;! &#x05D6;&#x05D5;&#x05D4;&#x05D9; &#x05D1;&#x05D3;&#x05D9;&#x05E7;&#x05D4; &#x05E9;&#x05DC; &#x05DE;&#x05E2;&#x05E8;&#x05DB;&#x05EA; &#x05D4;&#x05E7;&#x05E8;&#x05D0;&#x05EA; &#x05D4;&#x05EA;&#x05E8;&#x05D0;&#x05D5;&#x05EA;.</string>
-    <string name="api_key_label">&#x05DE;&#x05E4;&#x05EA;&#x05D7; API &#x05E9;&#x05DC; ElevenLabs</string>
-    <string name="api_key_hint">&#x05D4;&#x05DB;&#x05E0;&#x05E1; &#x05D0;&#x05EA; &#x05DE;&#x05E4;&#x05EA;&#x05D7; &#x05D4;-API &#x05E9;&#x05DC; ElevenLabs</string>
+    <string name="api_key_label">&#x05DE;&#x05E4;&#x05EA;&#x05D7; API &#x05E9;&#x05DC; Gemini</string>
+    <string name="api_key_hint">&#x05D4;&#x05DB;&#x05E0;&#x05E1; &#x05D0;&#x05EA; &#x05DE;&#x05E4;&#x05EA;&#x05D7; &#x05D4;-API &#x05E9;&#x05DC; Google AI Studio</string>
     <string name="verify">&#x05D0;&#x05D9;&#x05DE;&#x05D5;&#x05EA;</string>
     <string name="load_voices">&#x05D8;&#x05E2;&#x05D9;&#x05E0;&#x05EA; &#x05E7;&#x05D5;&#x05DC;&#x05D5;&#x05EA;</string>
     <string name="select_voice">&#x05D1;&#x05D7;&#x05D9;&#x05E8;&#x05EA; &#x05E7;&#x05D5;&#x05DC;</string>
     <string name="voice">&#x05E7;&#x05D5;&#x05DC;</string>
     <string name="model">&#x05DE;&#x05D5;&#x05D3;&#x05DC;</string>
-    <string name="stability">&#x05D9;&#x05E6;&#x05D9;&#x05D1;&#x05D5;&#x05EA;</string>
-    <string name="similarity_boost">&#x05D3;&#x05DE;&#x05D9;&#x05D5;&#x05DF; &#x05D3;&#x05DE;&#x05D9;&#x05D5;&#x05EA;</string>
-    <string name="style">&#x05E1;&#x05D2;&#x05E0;&#x05D5;&#x05DF;</string>
     <string name="speed">&#x05DE;&#x05D4;&#x05D9;&#x05E8;&#x05D5;&#x05EA;</string>
     <string name="settings">&#x05D4;&#x05D2;&#x05D3;&#x05E8;&#x05D5;&#x05EA;</string>
     <string name="dashboard">&#x05DC;&#x05D5;&#x05D7; &#x05D1;&#x05E7;&#x05E8;&#x05D4;</string>
@@ -42,5 +39,5 @@
     <string name="clear_log">&#x05E0;&#x05D9;&#x05E7;&#x05D5;&#x05D9; &#x05D9;&#x05D5;&#x05DE;&#x05DF;</string>
     <string name="about">&#x05D0;&#x05D5;&#x05D3;&#x05D5;&#x05EA;</string>
     <string name="version">&#x05D2;&#x05E8;&#x05E1;&#x05D4; 1.0.0</string>
-    <string name="powered_by">&#x05DE;&#x05D5;&#x05E4;&#x05E2;&#x05DC; &#x05E2;&#x05DC; &#x05D9;&#x05D3;&#x05D9; ElevenLabs</string>
+    <string name="powered_by">&#x05DE;&#x05D5;&#x05E4;&#x05E2;&#x05DC; &#x05E2;&#x05DC; &#x05D9;&#x05D3;&#x05D9; Gemini TTS</string>
 </resources>

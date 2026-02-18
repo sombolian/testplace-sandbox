@@ -19,7 +19,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.notifytts.data.PreferencesManager
 import com.notifytts.data.QuietHours
-import com.notifytts.service.ElevenLabsAPI
+import com.notifytts.service.GeminiTTSAPI
 import com.notifytts.service.ShakeDetector
 import com.notifytts.ui.components.*
 import kotlinx.coroutines.launch
@@ -88,13 +88,14 @@ fun GeneralSettingsScreen(
     var quietHours by remember { mutableStateOf(prefs.quietHours) }
     var logEnabled by remember { mutableStateOf(prefs.logEnabled) }
 
-    // ElevenLabs
-    var apiKey by remember { mutableStateOf(prefs.elevenLabsApiKey) }
+    // Gemini
+    var apiKey by remember { mutableStateOf(prefs.geminiApiKey) }
     var showApiKey by remember { mutableStateOf(false) }
-    var model by remember { mutableStateOf(prefs.elevenLabsModel) }
+    var model by remember { mutableStateOf(prefs.geminiModel) }
     var apiStatus by remember { mutableStateOf("") }
-    val api = remember { ElevenLabsAPI(context.cacheDir) }
+    val api = remember { GeminiTTSAPI(context.cacheDir) }
     val scope = rememberCoroutineScope()
+    var isVerifying by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -102,8 +103,8 @@ fun GeneralSettingsScreen(
             .verticalScroll(rememberScrollState())
             .padding(bottom = 80.dp)
     ) {
-        // ElevenLabs API
-        SectionHeader("ElevenLabs API")
+        // Gemini API
+        SectionHeader("Gemini API")
 
         SettingsCard {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -111,10 +112,10 @@ fun GeneralSettingsScreen(
                     value = apiKey,
                     onValueChange = {
                         apiKey = it
-                        prefs.elevenLabsApiKey = it
+                        prefs.geminiApiKey = it
                     },
                     label = { Text("API Key") },
-                    placeholder = { Text("Enter your ElevenLabs API key") },
+                    placeholder = { Text("Enter your Google AI Studio API key") },
                     visualTransformation = if (showApiKey) VisualTransformation.None
                     else PasswordVisualTransformation(),
                     trailingIcon = {
@@ -136,25 +137,28 @@ fun GeneralSettingsScreen(
                     OutlinedButton(
                         onClick = {
                             if (apiKey.isBlank()) return@OutlinedButton
+                            isVerifying = true
+                            apiStatus = "Verifying..."
                             scope.launch {
-                                apiStatus = "Checking..."
-                                try {
-                                    val result = api.getSubscriptionInfo(apiKey)
-                                    result.fold(
-                                        onSuccess = { (used, limit) ->
-                                            apiStatus = "Valid! Characters: $used / $limit"
-                                        },
-                                        onFailure = {
-                                            apiStatus = "Error: ${it.message}"
-                                        }
-                                    )
-                                } catch (e: Exception) {
-                                    apiStatus = "Error: ${e.message}"
-                                }
+                                val result = api.verifyApiKey(apiKey)
+                                result.fold(
+                                    onSuccess = {
+                                        apiStatus = "Valid! Gemini TTS is ready"
+                                    },
+                                    onFailure = {
+                                        apiStatus = "Error: ${it.message}"
+                                    }
+                                )
+                                isVerifying = false
                             }
                         },
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(8.dp),
+                        enabled = !isVerifying && apiKey.isNotBlank()
                     ) {
+                        if (isVerifying) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
                         Text("Verify")
                     }
 
@@ -186,24 +190,22 @@ fun GeneralSettingsScreen(
                 SettingsClickable(
                     title = "Model",
                     subtitle = when (model) {
-                        "eleven_multilingual_v2" -> "Multilingual v2 (Hebrew)"
-                        "eleven_turbo_v2_5" -> "Turbo v2.5 (Fast, multilingual)"
-                        "eleven_turbo_v2" -> "Turbo v2 (Fastest, English)"
+                        "gemini-2.5-pro-preview-tts" -> "Pro (Highest quality)"
+                        "gemini-2.5-flash-preview-tts" -> "Flash (Fast, low latency)"
                         else -> model
                     },
                     onClick = { showModelMenu = true }
                 )
                 DropdownMenu(expanded = showModelMenu, onDismissRequest = { showModelMenu = false }) {
                     listOf(
-                        "eleven_multilingual_v2" to "Multilingual v2 (Best for Hebrew)",
-                        "eleven_turbo_v2_5" to "Turbo v2.5 (Fast, multilingual)",
-                        "eleven_turbo_v2" to "Turbo v2 (Fastest, English only)",
+                        "gemini-2.5-flash-preview-tts" to "Flash (Fast, low latency)",
+                        "gemini-2.5-pro-preview-tts" to "Pro (Highest quality)",
                     ).forEach { (id, label) ->
                         DropdownMenuItem(
                             text = { Text(label) },
                             onClick = {
                                 model = id
-                                prefs.elevenLabsModel = id
+                                prefs.geminiModel = id
                                 showModelMenu = false
                             },
                             trailingIcon = {
@@ -571,7 +573,7 @@ fun GeneralSettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Powered by ElevenLabs",
+                    text = "Powered by Gemini TTS",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
