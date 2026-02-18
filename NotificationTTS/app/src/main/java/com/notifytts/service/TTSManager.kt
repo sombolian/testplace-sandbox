@@ -104,10 +104,13 @@ class TTSManager(private val context: Context) {
                     }
                 }
             } finally {
-                // Always reset - prevents isProcessing getting stuck true
                 mutex.withLock {
                     isProcessing = false
                     isPlayingAudio = false
+                }
+                // Re-check: items may have been enqueued while we were shutting down
+                if (queue.isNotEmpty() && !isPaused) {
+                    processQueue()
                 }
             }
         }
@@ -311,7 +314,18 @@ class TTSManager(private val context: Context) {
                 return@withContext Pair(false, "MediaPlayer.start() called but isPlaying=false")
             }
 
-            completable.await()
+            // Timeout prevents hanging forever if listeners never fire
+            try {
+                withTimeout(90_000L) { completable.await() }
+            } catch (e: TimeoutCancellationException) {
+                Log.e(TAG, "Audio playback timed out after 90s")
+                isPlayingAudio = false
+                try { mediaPlayer.stop(); mediaPlayer.release() } catch (_: Exception) {}
+                currentMediaPlayer = null
+                file.delete()
+                abandonAudioFocus()
+                Pair(false, "Playback timed out")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error playing audio: ${e.javaClass.simpleName}: ${e.message}", e)
             isPlayingAudio = false
@@ -370,7 +384,14 @@ class TTSManager(private val context: Context) {
             completable.complete(false)
         }
 
-        completable.await()
+        try {
+            withTimeout(30_000L) { completable.await() }
+        } catch (e: TimeoutCancellationException) {
+            Log.e(TAG, "Device TTS timed out after 30s")
+            isPlayingAudio = false
+            abandonAudioFocus()
+            false
+        }
     }
 
     private fun requestAudioFocus() {
@@ -422,6 +443,10 @@ class TTSManager(private val context: Context) {
 
     fun resume() {
         isPaused = false
+        // Restart processing in case items were enqueued while paused
+        if (queue.isNotEmpty()) {
+            processQueue()
+        }
     }
 
     fun clearQueue() {
