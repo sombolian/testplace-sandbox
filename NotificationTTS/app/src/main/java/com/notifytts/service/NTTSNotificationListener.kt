@@ -1,0 +1,134 @@
+package com.notifytts.service
+
+import android.app.NotificationManager
+import android.content.Context
+import android.os.PowerManager
+import android.service.notification.NotificationListenerService
+import android.service.notification.StatusBarNotification
+import android.util.Log
+import com.notifytts.data.NotificationLogEntry
+import com.notifytts.data.PreferencesManager
+
+class NTTSNotificationListener : NotificationListenerService() {
+
+    companion object {
+        private const val TAG = "NTTSListener"
+        var isRunning = false
+            private set
+    }
+
+    private lateinit var prefs: PreferencesManager
+    private lateinit var ttsManager: TTSManager
+    private lateinit var bluetoothMonitor: BluetoothMonitor
+    private lateinit var processor: NotificationProcessor
+
+    override fun onCreate() {
+        super.onCreate()
+        prefs = PreferencesManager(this)
+        ttsManager = TTSManager(this)
+        bluetoothMonitor = BluetoothMonitor(this)
+        processor = NotificationProcessor(prefs, packageManager)
+
+        bluetoothMonitor.startMonitoring { connected ->
+            Log.d(TAG, "Audio device connection changed: $connected")
+        }
+
+        isRunning = true
+        Log.i(TAG, "Notification listener started")
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        isRunning = false
+        ttsManager.destroy()
+        bluetoothMonitor.stopMonitoring()
+        Log.i(TAG, "Notification listener stopped")
+    }
+
+    override fun onNotificationPosted(sbn: StatusBarNotification?) {
+        sbn ?: return
+
+        if (!prefs.serviceEnabled) return
+
+        // Ignore our own notifications
+        if (sbn.packageName == packageName) return
+
+        // Check Do Not Disturb
+        if (prefs.respectDoNotDisturb && isDoNotDisturbActive()) return
+
+        // Check quiet hours
+        if (prefs.isInQuietHours()) return
+
+        // Check screen-off only
+        if (prefs.screenOffOnly && isScreenOn()) return
+
+        // Check audio output
+        if (!shouldSpeak()) return
+
+        // Process notification
+        val result = processor.process(sbn)
+
+        // Log it
+        prefs.addLogEntry(
+            NotificationLogEntry(
+                appPackage = sbn.packageName,
+                appName = result.appName,
+                title = result.title,
+                text = result.content,
+                wasRead = result.shouldRead,
+                skipReason = result.skipReason
+            )
+        )
+
+        if (result.shouldRead && result.text.isNotBlank()) {
+            Log.d(TAG, "Reading notification from ${result.appName}: ${result.text.take(50)}")
+            ttsManager.enqueue(result.text)
+        } else {
+            Log.d(TAG, "Skipped notification from ${result.appName}: ${result.skipReason}")
+        }
+    }
+
+    override fun onNotificationRemoved(sbn: StatusBarNotification?) {
+        // Could optionally stop reading if notification was dismissed
+    }
+
+    private fun shouldSpeak(): Boolean {
+        val btConnected = bluetoothMonitor.isBluetoothAudioConnected()
+        val wiredConnected = bluetoothMonitor.isWiredHeadphonesConnected()
+
+        if (prefs.alsoSpeaker) return true
+        if (prefs.onlyWhenBluetooth && btConnected) return true
+        if (prefs.alsoWiredHeadphones && wiredConnected) return true
+        if (!prefs.onlyWhenBluetooth && !prefs.alsoWiredHeadphones && !prefs.alsoSpeaker) {
+            // If no output restrictions are set, default to bluetooth-only behavior
+            return btConnected
+        }
+        return false
+    }
+
+    private fun isDoNotDisturbActive(): Boolean {
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        return try {
+            notificationManager.currentInterruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun isScreenOn(): Boolean {
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        return powerManager.isInteractive
+    }
+
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        isRunning = true
+        Log.i(TAG, "Notification listener connected")
+    }
+
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        isRunning = false
+        Log.i(TAG, "Notification listener disconnected")
+    }
+}

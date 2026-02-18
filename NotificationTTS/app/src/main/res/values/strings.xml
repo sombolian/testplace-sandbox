@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Notification TTS</string>
+    <string name="notification_access_title">Notification Access Required</string>
+    <string name="notification_access_desc">This app needs notification access to read your notifications aloud.</string>
+    <string name="grant_access">Grant Access</string>
+    <string name="service_enabled">Service Enabled</string>
+    <string name="service_disabled">Service Disabled</string>
+    <string name="bluetooth_connected">Bluetooth Connected</string>
+    <string name="bluetooth_disconnected">Bluetooth Disconnected</string>
+    <string name="test_tts">Test TTS</string>
+    <string name="test_tts_hint">Enter text to test (Hebrew supported)</string>
+    <string name="test_tts_default">Hello! This is a test of the notification text-to-speech system.</string>
+    <string name="api_key_label">ElevenLabs API Key</string>
+    <string name="api_key_hint">Enter your ElevenLabs API key</string>
+    <string name="verify">Verify</string>
+    <string name="load_voices">Load Voices</string>
+    <string name="select_voice">Select Voice</string>
+    <string name="voice">Voice</string>
+    <string name="model">Model</string>
+    <string name="stability">Stability</string>
+    <string name="similarity_boost">Similarity Boost</string>
+    <string name="style">Style</string>
+    <string name="speed">Speed</string>
+    <string name="settings">Settings</string>
+    <string name="dashboard">Dashboard</string>
+    <string name="apps">Apps</string>
+    <string name="rules">Rules</string>
+    <string name="log">Log</string>
+    <string name="tts_settings">TTS Settings</string>
+    <string name="blacklist">Blacklist</string>
+    <string name="whitelist">Whitelist</string>
+    <string name="add_rule">Add Rule</string>
+    <string name="edit_rule">Edit Rule</string>
+    <string name="delete_rule">Delete Rule</string>
+    <string name="pattern">Pattern</string>
+    <string name="block">Block</string>
+    <string name="require">Require</string>
+    <string name="replace">Replace</string>
+    <string name="cancel">Cancel</string>
+    <string name="save">Save</string>
+    <string name="clear_log">Clear Log</string>
+    <string name="about">About</string>
+    <string name="version">Version 1.0.0</string>
+    <string name="powered_by">Powered by ElevenLabs</string>
+</resources>
