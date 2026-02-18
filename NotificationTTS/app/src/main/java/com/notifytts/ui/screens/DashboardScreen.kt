@@ -46,7 +46,6 @@ fun DashboardScreen(
     var hasApiKey by remember { mutableStateOf(prefs.elevenLabsApiKey.isNotBlank()) }
     var testText by remember { mutableStateOf("") }
     var showTestDialog by remember { mutableStateOf(false) }
-    var isSpeaking by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         onDispose { ttsManager.destroy() }
@@ -247,13 +246,11 @@ fun DashboardScreen(
                 Button(
                     onClick = {
                         if (testText.isNotBlank()) {
-                            isSpeaking = true
                             ttsManager.enqueue(testText)
                             Toast.makeText(context, "Speaking...", Toast.LENGTH_SHORT).show()
                         }
                         showTestDialog = false
-                    },
-                    enabled = !isSpeaking
+                    }
                 ) {
                     Text("Speak")
                 }

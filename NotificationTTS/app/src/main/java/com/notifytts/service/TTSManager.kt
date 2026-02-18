@@ -134,7 +134,7 @@ class TTSManager(private val context: Context) {
             currentMediaPlayer = MediaPlayer().apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build()
                 )
@@ -181,8 +181,14 @@ class TTSManager(private val context: Context) {
     }
 
     private suspend fun speakWithDeviceTts(text: String) = withContext(Dispatchers.Main) {
+        // Wait up to 3 seconds for TTS engine to initialize
+        var waited = 0
+        while (!deviceTtsReady && waited < 3000) {
+            delay(100)
+            waited += 100
+        }
         if (!deviceTtsReady) {
-            Log.w(TAG, "Device TTS not ready")
+            Log.w(TAG, "Device TTS not ready after ${waited}ms")
             return@withContext
         }
 
@@ -214,7 +220,7 @@ class TTSManager(private val context: Context) {
         focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
             .setAudioAttributes(
                 AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build()
             )
@@ -225,6 +231,10 @@ class TTSManager(private val context: Context) {
     private fun abandonAudioFocus() {
         focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
         focusRequest = null
+    }
+
+    fun isSpeaking(): Boolean {
+        return isProcessing || currentMediaPlayer?.isPlaying == true
     }
 
     fun pause() {

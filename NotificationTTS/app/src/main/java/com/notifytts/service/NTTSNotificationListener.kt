@@ -3,6 +3,8 @@ package com.notifytts.service
 import android.app.NotificationManager
 import android.content.Context
 import android.os.PowerManager
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
@@ -101,12 +103,18 @@ class NTTSNotificationListener : NotificationListenerService() {
             shakeDetector = ShakeDetector(this).apply {
                 setThresholdFromSensitivity(prefs.shakeSensitivity)
                 start {
-                    Log.d(TAG, "Shake detected - pausing TTS")
-                    ttsManager.pause()
-                    // Auto-resume after 5 seconds
-                    android.os.Handler(mainLooper).postDelayed({
-                        ttsManager.resume()
-                    }, 5000)
+                    // Only vibrate if TTS was actually speaking
+                    if (ttsManager.isSpeaking()) {
+                        Log.d(TAG, "Shake detected - pausing TTS")
+                        ttsManager.pause()
+                        // Vibrate to confirm the shake stopped speech
+                        val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                        vibrator?.vibrate(VibrationEffect.createOneShot(300, VibrationEffect.DEFAULT_AMPLITUDE))
+                        // Auto-resume after 5 seconds
+                        android.os.Handler(mainLooper).postDelayed({
+                            ttsManager.resume()
+                        }, 5000)
+                    }
                 }
             }
         }

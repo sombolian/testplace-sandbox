@@ -14,11 +14,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.notifytts.data.PreferencesManager
 import com.notifytts.data.QuietHours
+import com.notifytts.service.ElevenLabsAPI
 import com.notifytts.service.ShakeDetector
 import com.notifytts.ui.components.*
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,12 +88,135 @@ fun GeneralSettingsScreen(
     var quietHours by remember { mutableStateOf(prefs.quietHours) }
     var logEnabled by remember { mutableStateOf(prefs.logEnabled) }
 
+    // ElevenLabs
+    var apiKey by remember { mutableStateOf(prefs.elevenLabsApiKey) }
+    var showApiKey by remember { mutableStateOf(false) }
+    var model by remember { mutableStateOf(prefs.elevenLabsModel) }
+    var apiStatus by remember { mutableStateOf("") }
+    val api = remember { ElevenLabsAPI(context.cacheDir) }
+    val scope = rememberCoroutineScope()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(bottom = 80.dp)
     ) {
+        // ElevenLabs API
+        SectionHeader("ElevenLabs API")
+
+        SettingsCard {
+            Column(modifier = Modifier.padding(16.dp)) {
+                OutlinedTextField(
+                    value = apiKey,
+                    onValueChange = {
+                        apiKey = it
+                        prefs.elevenLabsApiKey = it
+                    },
+                    label = { Text("API Key") },
+                    placeholder = { Text("Enter your ElevenLabs API key") },
+                    visualTransformation = if (showApiKey) VisualTransformation.None
+                    else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { showApiKey = !showApiKey }) {
+                            Icon(
+                                if (showApiKey) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                contentDescription = "Toggle visibility"
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            if (apiKey.isBlank()) return@OutlinedButton
+                            scope.launch {
+                                apiStatus = "Checking..."
+                                try {
+                                    val result = api.getSubscriptionInfo(apiKey)
+                                    result.fold(
+                                        onSuccess = { (used, limit) ->
+                                            apiStatus = "Valid! Characters: $used / $limit"
+                                        },
+                                        onFailure = {
+                                            apiStatus = "Error: ${it.message}"
+                                        }
+                                    )
+                                } catch (e: Exception) {
+                                    apiStatus = "Error: ${e.message}"
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Verify")
+                    }
+
+                    OutlinedButton(
+                        onClick = onNavigateToTTSSettings,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Voice & Model")
+                    }
+                }
+
+                if (apiStatus.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = apiStatus,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (apiStatus.startsWith("Valid")) MaterialTheme.colorScheme.primary
+                        else if (apiStatus.startsWith("Error")) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Divider(modifier = Modifier.padding(horizontal = 16.dp))
+
+            // Model selector inline
+            var showModelMenu by remember { mutableStateOf(false) }
+            Box {
+                SettingsClickable(
+                    title = "Model",
+                    subtitle = when (model) {
+                        "eleven_multilingual_v2" -> "Multilingual v2 (Hebrew)"
+                        "eleven_turbo_v2_5" -> "Turbo v2.5 (Fast, multilingual)"
+                        "eleven_turbo_v2" -> "Turbo v2 (Fastest, English)"
+                        else -> model
+                    },
+                    onClick = { showModelMenu = true }
+                )
+                DropdownMenu(expanded = showModelMenu, onDismissRequest = { showModelMenu = false }) {
+                    listOf(
+                        "eleven_multilingual_v2" to "Multilingual v2 (Best for Hebrew)",
+                        "eleven_turbo_v2_5" to "Turbo v2.5 (Fast, multilingual)",
+                        "eleven_turbo_v2" to "Turbo v2 (Fastest, English only)",
+                    ).forEach { (id, label) ->
+                        DropdownMenuItem(
+                            text = { Text(label) },
+                            onClick = {
+                                model = id
+                                prefs.elevenLabsModel = id
+                                showModelMenu = false
+                            },
+                            trailingIcon = {
+                                if (model == id) Icon(Icons.Filled.Check, contentDescription = null)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         // Audio output
         SectionHeader("Audio Output")
 
@@ -411,24 +538,6 @@ fun GeneralSettingsScreen(
                 onCheckedChange = {
                     logEnabled = it
                     prefs.logEnabled = it
-                }
-            )
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // TTS Settings link
-        SettingsCard {
-            SettingsClickable(
-                title = "TTS Engine Settings",
-                subtitle = "Configure ElevenLabs voice and parameters",
-                onClick = onNavigateToTTSSettings,
-                trailing = {
-                    Icon(
-                        Icons.Filled.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             )
         }
