@@ -229,6 +229,15 @@ class PreferencesManager(context: Context) {
         prefs.edit().putString("notification_log", gson.toJson(log)).apply()
     }
 
+    fun updateLogEntryStatus(entryId: Long, ttsStatus: String, ttsError: String? = null) {
+        val log = getNotificationLog().toMutableList()
+        val index = log.indexOfFirst { it.id == entryId }
+        if (index >= 0) {
+            log[index] = log[index].copy(ttsStatus = ttsStatus, ttsError = ttsError)
+            prefs.edit().putString("notification_log", gson.toJson(log)).apply()
+        }
+    }
+
     fun clearLog() {
         prefs.edit().remove("notification_log").apply()
     }

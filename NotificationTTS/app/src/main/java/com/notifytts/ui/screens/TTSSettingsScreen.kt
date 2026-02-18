@@ -90,16 +90,21 @@ fun TTSSettingsScreen() {
                         isVerifying = true
                         apiStatus = "Verifying..."
                         scope.launch {
-                            val result = api.verifyApiKey(apiKey)
-                            result.fold(
-                                onSuccess = {
-                                    apiStatus = "Valid! Gemini TTS is ready"
-                                },
-                                onFailure = {
-                                    apiStatus = "Error: ${it.message}"
-                                }
-                            )
-                            isVerifying = false
+                            try {
+                                val result = api.verifyApiKey(apiKey)
+                                result.fold(
+                                    onSuccess = {
+                                        apiStatus = "Valid! Gemini TTS is ready"
+                                    },
+                                    onFailure = { error ->
+                                        apiStatus = "Error: ${error.message ?: "Unknown error"}"
+                                    }
+                                )
+                            } catch (e: Exception) {
+                                apiStatus = "Error: ${e.message ?: "Unexpected error"}"
+                            } finally {
+                                isVerifying = false
+                            }
                         }
                     },
                     shape = RoundedCornerShape(8.dp),

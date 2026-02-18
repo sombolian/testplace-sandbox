@@ -1,6 +1,7 @@
 package com.notifytts.service
 
 import android.util.Base64
+import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.notifytts.data.GeminiVoice
@@ -18,15 +19,8 @@ import java.util.concurrent.TimeUnit
 
 class GeminiTTSAPI(private val cacheDir: File) {
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
-        .build()
-    private val gson = Gson()
-    private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
-
     companion object {
+        private const val TAG = "GeminiTTSAPI"
         private const val GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
         private const val SAMPLE_RATE = 24000
         private const val CHANNELS = 1
@@ -69,6 +63,14 @@ class GeminiTTSAPI(private val cacheDir: File) {
         )
     }
 
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .build()
+    private val gson = Gson()
+    private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
+
     suspend fun synthesize(
         text: String,
         apiKey: String,
@@ -103,34 +105,74 @@ class GeminiTTSAPI(private val cacheDir: File) {
 
             val response = client.newCall(request).execute()
 
-            if (!response.isSuccessful) {
-                val errorBody = response.body?.string() ?: "Unknown error"
-                return@withContext Result.failure(
-                    Exception("Gemini TTS API error ${response.code}: $errorBody")
-                )
+            // Use .use {} to ensure response is always closed properly
+            response.use { resp ->
+                if (!resp.isSuccessful) {
+                    val errorBody = resp.body?.string() ?: "Unknown error"
+                    Log.e(TAG, "Gemini API error ${resp.code}: $errorBody")
+                    return@withContext Result.failure(
+                        Exception("Gemini TTS API error ${resp.code}: $errorBody")
+                    )
+                }
+
+                val responseJson = resp.body?.string()
+                    ?: return@withContext Result.failure(Exception("Empty response from Gemini"))
+
+                val root = gson.fromJson(responseJson, JsonObject::class.java)
+                val candidates = root.getAsJsonArray("candidates")
+                    ?: return@withContext Result.failure(Exception("No candidates in response"))
+
+                if (candidates.size() == 0) {
+                    return@withContext Result.failure(Exception("Empty candidates array in response"))
+                }
+
+                val content = candidates[0].asJsonObject
+                    .getAsJsonObject("content")
+                    ?: return@withContext Result.failure(Exception("No content in candidate"))
+
+                val parts = content.getAsJsonArray("parts")
+                if (parts == null || parts.size() == 0) {
+                    return@withContext Result.failure(Exception("No parts in response content"))
+                }
+
+                val inlineData = parts[0].asJsonObject
+                    .getAsJsonObject("inlineData")
+                    ?: return@withContext Result.failure(Exception("No inlineData in response"))
+
+                val mimeType = inlineData.get("mimeType")?.asString ?: ""
+                val audioBase64 = inlineData.get("data")?.asString
+                    ?: return@withContext Result.failure(Exception("No audio data in response"))
+
+                val audioBytes = Base64.decode(audioBase64, Base64.DEFAULT)
+
+                if (audioBytes.isEmpty()) {
+                    return@withContext Result.failure(Exception("Decoded audio data is empty"))
+                }
+
+                Log.d(TAG, "Received audio: mimeType=$mimeType, size=${audioBytes.size} bytes, voice=$voiceName, model=$modelId")
+
+                val wavFile = File(cacheDir, "tts_${System.currentTimeMillis()}.wav")
+
+                // Check if data is already a WAV file or needs wrapping
+                if (mimeType.contains("wav", ignoreCase = true) || isWavData(audioBytes)) {
+                    // Already WAV-formatted, write directly
+                    wavFile.writeBytes(audioBytes)
+                    Log.d(TAG, "Audio was already WAV-formatted, wrote directly")
+                } else {
+                    // Raw PCM data, wrap in WAV container
+                    writeWavFile(wavFile, audioBytes)
+                    Log.d(TAG, "Wrapped raw PCM in WAV container")
+                }
+
+                if (!wavFile.exists() || wavFile.length() < 45) {
+                    return@withContext Result.failure(Exception("Generated audio file is empty or too small (${wavFile.length()} bytes)"))
+                }
+
+                Log.d(TAG, "Audio file ready: ${wavFile.length()} bytes")
+                Result.success(wavFile)
             }
-
-            val responseJson = response.body?.string()
-                ?: return@withContext Result.failure(Exception("Empty response from Gemini"))
-
-            val root = gson.fromJson(responseJson, JsonObject::class.java)
-            val candidates = root.getAsJsonArray("candidates")
-                ?: return@withContext Result.failure(Exception("No candidates in response"))
-
-            val inlineData = candidates[0].asJsonObject
-                .getAsJsonObject("content")
-                .getAsJsonArray("parts")[0].asJsonObject
-                .getAsJsonObject("inlineData")
-
-            val audioBase64 = inlineData.get("data").asString
-            val pcmData = Base64.decode(audioBase64, Base64.DEFAULT)
-
-            // Wrap PCM data in WAV container
-            val wavFile = File(cacheDir, "tts_${System.currentTimeMillis()}.wav")
-            writeWavFile(wavFile, pcmData)
-
-            Result.success(wavFile)
         } catch (e: Exception) {
+            Log.e(TAG, "synthesize() exception: ${e.javaClass.simpleName}: ${e.message}", e)
             Result.failure(e)
         }
     }
@@ -140,6 +182,10 @@ class GeminiTTSAPI(private val cacheDir: File) {
      */
     suspend fun verifyApiKey(apiKey: String): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
+            if (apiKey.isBlank()) {
+                return@withContext Result.failure(Exception("API key is empty"))
+            }
+
             val body = JsonObject().apply {
                 add("contents", gson.toJsonTree(listOf(
                     mapOf("parts" to listOf(mapOf("text" to "Hi")))
@@ -165,22 +211,85 @@ class GeminiTTSAPI(private val cacheDir: File) {
                 .build()
 
             val response = client.newCall(request).execute()
-            response.body?.close()
 
-            if (response.isSuccessful) {
-                Result.success(true)
-            } else {
-                val code = response.code
-                when (code) {
-                    400 -> Result.failure(Exception("Invalid request"))
-                    403 -> Result.failure(Exception("API key not authorized for Gemini TTS"))
-                    429 -> Result.failure(Exception("Rate limited - try again later"))
-                    else -> Result.failure(Exception("API error: $code"))
+            // Use .use {} to ensure response is always closed
+            response.use { resp ->
+                val responseBody = try {
+                    resp.body?.string() ?: ""
+                } catch (e: Exception) {
+                    ""
+                }
+
+                if (resp.isSuccessful) {
+                    // Verify we actually got audio data in the response
+                    try {
+                        val root = gson.fromJson(responseBody, JsonObject::class.java)
+                        val candidates = root?.getAsJsonArray("candidates")
+                        if (candidates != null && candidates.size() > 0) {
+                            val inlineData = candidates[0].asJsonObject
+                                .getAsJsonObject("content")
+                                ?.getAsJsonArray("parts")
+                                ?.get(0)?.asJsonObject
+                                ?.getAsJsonObject("inlineData")
+                            if (inlineData?.get("data") != null) {
+                                Result.success(true)
+                            } else {
+                                Result.failure(Exception("API responded but no audio data returned"))
+                            }
+                        } else {
+                            Result.failure(Exception("API responded but no candidates in response"))
+                        }
+                    } catch (e: Exception) {
+                        // Response was 200 but couldn't parse - still consider it valid
+                        Log.w(TAG, "Verify: 200 but parse error: ${e.message}")
+                        Result.success(true)
+                    }
+                } else {
+                    val code = resp.code
+                    val errorMsg = when (code) {
+                        400 -> {
+                            val detail = extractErrorMessage(responseBody)
+                            "Invalid request${if (detail != null) ": $detail" else ""}"
+                        }
+                        401 -> "Invalid API key"
+                        403 -> "API key not authorized for Gemini TTS"
+                        404 -> "TTS model not found (${Constants.DEFAULT_GEMINI_MODEL}). The model may have been updated."
+                        429 -> "Rate limited - try again later"
+                        else -> {
+                            val detail = extractErrorMessage(responseBody)
+                            "API error $code${if (detail != null) ": $detail" else ""}"
+                        }
+                    }
+                    Log.e(TAG, "Verify failed: $errorMsg (full response: ${responseBody.take(500)})")
+                    Result.failure(Exception(errorMsg))
                 }
             }
         } catch (e: Exception) {
+            Log.e(TAG, "verifyApiKey exception: ${e.javaClass.simpleName}: ${e.message}", e)
             Result.failure(e)
         }
+    }
+
+    private fun extractErrorMessage(responseBody: String): String? {
+        return try {
+            val root = gson.fromJson(responseBody, JsonObject::class.java)
+            root?.getAsJsonObject("error")?.get("message")?.asString
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** Check if audio bytes start with RIFF/WAVE header */
+    private fun isWavData(data: ByteArray): Boolean {
+        if (data.size < 12) return false
+        return data[0] == 'R'.code.toByte() &&
+                data[1] == 'I'.code.toByte() &&
+                data[2] == 'F'.code.toByte() &&
+                data[3] == 'F'.code.toByte() &&
+                data[8] == 'W'.code.toByte() &&
+                data[9] == 'A'.code.toByte() &&
+                data[10] == 'V'.code.toByte() &&
+                data[11] == 'E'.code.toByte()
     }
 
     private fun writeWavFile(file: File, pcmData: ByteArray) {

@@ -18,6 +18,7 @@ import com.notifytts.data.NotificationLogEntry
 import com.notifytts.data.PreferencesManager
 import com.notifytts.ui.theme.StatusActive
 import com.notifytts.ui.theme.StatusInactive
+import com.notifytts.ui.theme.StatusWarning
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -144,6 +145,19 @@ private fun LogEntryItem(entry: NotificationLogEntry) {
     val dateFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
     var expanded by remember { mutableStateOf(false) }
 
+    // Determine icon and color based on actual TTS status
+    val (statusIcon, statusColor, statusLabel) = when (entry.ttsStatus) {
+        "played" -> Triple(Icons.Filled.VolumeUp, StatusActive, "Played")
+        "failed" -> Triple(Icons.Filled.ErrorOutline, StatusInactive, "Failed")
+        "queued" -> Triple(Icons.Filled.HourglassTop, StatusWarning, "Queued")
+        "skipped" -> Triple(Icons.Filled.VolumeOff, StatusInactive, "Skipped")
+        else -> {
+            // Legacy entries without ttsStatus
+            if (entry.wasRead) Triple(Icons.Filled.VolumeUp, StatusActive, "Read")
+            else Triple(Icons.Filled.VolumeOff, StatusInactive, "Skipped")
+        }
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -151,9 +165,15 @@ private fun LogEntryItem(entry: NotificationLogEntry) {
         shape = RoundedCornerShape(12.dp),
         onClick = { expanded = !expanded },
         colors = CardDefaults.cardColors(
-            containerColor = if (entry.wasRead)
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-            else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)
+            containerColor = when (entry.ttsStatus) {
+                "played" -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                "failed" -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                "queued" -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)
+                else -> {
+                    if (entry.wasRead) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                    else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)
+                }
+            }
         )
     ) {
         Column(
@@ -166,10 +186,10 @@ private fun LogEntryItem(entry: NotificationLogEntry) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = if (entry.wasRead) Icons.Filled.VolumeUp else Icons.Filled.VolumeOff,
-                    contentDescription = null,
+                    imageVector = statusIcon,
+                    contentDescription = statusLabel,
                     modifier = Modifier.size(18.dp),
-                    tint = if (entry.wasRead) StatusActive else StatusInactive
+                    tint = statusColor
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -178,6 +198,21 @@ private fun LogEntryItem(entry: NotificationLogEntry) {
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f)
                 )
+                // Show TTS status badge
+                if (entry.ttsStatus != null) {
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = statusColor.copy(alpha = 0.15f),
+                        modifier = Modifier.padding(end = 6.dp)
+                    ) {
+                        Text(
+                            text = statusLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = statusColor,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                        )
+                    }
+                }
                 Text(
                     text = dateFormat.format(Date(entry.timestamp)),
                     style = MaterialTheme.typography.labelSmall,
@@ -207,11 +242,36 @@ private fun LogEntryItem(entry: NotificationLogEntry) {
                 )
             }
 
+            // Show skip reason for skipped entries
             if (!entry.wasRead && entry.skipReason != null) {
                 Text(
                     text = "Skipped: ${entry.skipReason}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(start = 26.dp, top = 2.dp)
+                )
+            }
+
+            // Show TTS error for failed entries
+            if (entry.ttsStatus == "failed" && entry.ttsError != null) {
+                Text(
+                    text = "TTS Error: ${entry.ttsError}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    maxLines = if (expanded) Int.MAX_VALUE else 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 26.dp, top = 2.dp)
+                )
+            }
+
+            // Show info note when Gemini failed but fallback was used
+            if (entry.ttsStatus == "played" && entry.ttsError != null) {
+                Text(
+                    text = "Note: ${entry.ttsError}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = StatusWarning,
+                    maxLines = if (expanded) Int.MAX_VALUE else 2,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(start = 26.dp, top = 2.dp)
                 )
             }

@@ -74,22 +74,42 @@ class NTTSNotificationListener : NotificationListenerService() {
         // Process notification
         val result = processor.process(sbn)
 
-        // Log it
-        prefs.addLogEntry(
-            NotificationLogEntry(
-                appPackage = sbn.packageName,
-                appName = result.appName,
-                title = result.title,
-                text = result.content,
-                wasRead = result.shouldRead,
-                skipReason = result.skipReason
-            )
-        )
-
         if (result.shouldRead && result.text.isNotBlank()) {
+            // Log as "queued" - will be updated with actual TTS result
+            val logEntryId = System.currentTimeMillis()
+            prefs.addLogEntry(
+                NotificationLogEntry(
+                    id = logEntryId,
+                    appPackage = sbn.packageName,
+                    appName = result.appName,
+                    title = result.title,
+                    text = result.content,
+                    wasRead = true,
+                    skipReason = null,
+                    ttsStatus = "queued"
+                )
+            )
+
             Log.d(TAG, "Reading notification from ${result.appName}: ${result.text.take(50)}")
-            ttsManager.enqueue(result.text)
+            ttsManager.enqueue(result.text, logEntryId) { success, errorMsg ->
+                // Update the log entry with the actual TTS result
+                val status = if (success) "played" else "failed"
+                Log.d(TAG, "TTS result for ${result.appName}: $status${if (errorMsg != null) " ($errorMsg)" else ""}")
+                prefs.updateLogEntryStatus(logEntryId, status, errorMsg)
+            }
         } else {
+            // Log skipped notification
+            prefs.addLogEntry(
+                NotificationLogEntry(
+                    appPackage = sbn.packageName,
+                    appName = result.appName,
+                    title = result.title,
+                    text = result.content,
+                    wasRead = false,
+                    skipReason = result.skipReason,
+                    ttsStatus = "skipped"
+                )
+            )
             Log.d(TAG, "Skipped notification from ${result.appName}: ${result.skipReason}")
         }
     }

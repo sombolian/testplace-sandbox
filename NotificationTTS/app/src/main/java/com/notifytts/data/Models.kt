@@ -32,7 +32,9 @@ data class NotificationLogEntry(
     val title: String,
     val text: String,
     val wasRead: Boolean,
-    val skipReason: String? = null
+    val skipReason: String? = null,
+    val ttsStatus: String? = null,   // "queued", "generating", "playing", "played", "failed"
+    val ttsError: String? = null     // error details when ttsStatus == "failed"
 )
 
 data class GeminiVoice(
