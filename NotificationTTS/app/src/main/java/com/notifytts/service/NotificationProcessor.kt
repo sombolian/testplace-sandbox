@@ -13,6 +13,10 @@ class NotificationProcessor(
 
     private val recentNotifications = mutableMapOf<String, Long>()
 
+    /** Tracks recently read app+title combos to avoid repeating "App: Title" for chat-like messages */
+    private val recentSenders = mutableMapOf<String, Long>()
+    private val SENDER_REPEAT_WINDOW = 120_000L // 2 minutes
+
     /** Strip invisible Unicode characters (RTL/LTR marks, zero-width chars, bidi controls) */
     private fun stripInvisibleChars(text: String): String {
         return text.replace(Regex("[\u200B-\u200F\u2028-\u202F\u2060-\u206F\uFEFF]"), "")
@@ -129,8 +133,17 @@ class NotificationProcessor(
         // Clean old entries
         recentNotifications.entries.removeAll { (now - it.value) > prefs.duplicateTimeout * 2 }
 
+        // Check if same app+title was recently read (chat-like repeated messages)
+        val senderKey = "${sbn.packageName}:$title"
+        val lastRead = recentSenders[senderKey]
+        val isRepeatSender = lastRead != null && (now - lastRead) < SENDER_REPEAT_WINDOW
+        recentSenders[senderKey] = now
+
+        // Clean old sender entries
+        recentSenders.entries.removeAll { (now - it.value) > SENDER_REPEAT_WINDOW * 2 }
+
         // Build the message text
-        val messageText = formatMessage(appName, title, content)
+        val messageText = formatMessage(appName, title, content, isRepeatSender)
 
         return ProcessResult(
             shouldRead = true,
@@ -141,11 +154,12 @@ class NotificationProcessor(
         )
     }
 
-    private fun formatMessage(appName: String, title: String, content: String): String {
+    private fun formatMessage(appName: String, title: String, content: String, isRepeatSender: Boolean = false): String {
         var format = prefs.messageFormat
 
-        val appPart = if (prefs.readAppName) appName else ""
-        val titlePart = if (prefs.readTitle) title else ""
+        // If same app+title was recently read, skip app name and title to avoid repetition
+        val appPart = if (prefs.readAppName && !isRepeatSender) appName else ""
+        val titlePart = if (prefs.readTitle && !isRepeatSender) title else ""
         val contentPart = if (prefs.readContent) content else ""
 
         var result = format
