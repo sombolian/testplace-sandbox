@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Arena Clash</string>
+    <string name="battle">Battle</string>
+    <string name="deck">Deck</string>
+    <string name="arenas">Arenas</string>
+</resources>

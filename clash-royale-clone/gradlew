@@ -1,0 +1,9 @@
+#!/bin/sh
+# Gradle wrapper stub - download and use Android Studio for full build
+echo "Please build this project using Android Studio or install the Android SDK"
+echo "Import this project into Android Studio and click Build > Make Project"
+echo ""
+echo "Requirements:"
+echo "  - Android Studio Arctic Fox or newer"
+echo "  - Android SDK 34"
+echo "  - Kotlin 1.9.20"

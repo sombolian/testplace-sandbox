@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#1A237E</color>
+    <color name="primary_dark">#000051</color>
+    <color name="primary_light">#534BAE</color>
+    <color name="accent">#FFD700</color>
+    <color name="accent_dark">#C7A600</color>
+
+    <color name="background_dark">#141420</color>
+    <color name="surface_dark">#1A1A2E</color>
+    <color name="card_dark">#252540</color>
+
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#B0FFFFFF</color>
+
+    <color name="elixir_purple">#9C27B0</color>
+    <color name="elixir_light">#CE93D8</color>
+
+    <color name="rarity_common">#8E8E8E</color>
+    <color name="rarity_rare">#FF9800</color>
+    <color name="rarity_epic">#9C27B0</color>
+    <color name="rarity_legendary">#FFD700</color>
+
+    <color name="player_blue">#2196F3</color>
+    <color name="enemy_red">#F44336</color>
+    <color name="hp_green">#4CAF50</color>
+    <color name="hp_red">#F44336</color>
+
+    <color name="win_green">#4CAF50</color>
+    <color name="loss_red">#F44336</color>
+    <color name="draw_yellow">#FFC107</color>
+</resources>
