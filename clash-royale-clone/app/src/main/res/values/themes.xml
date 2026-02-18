@@ -19,7 +19,6 @@
 
     <style name="Theme.ClashRoyaleClone.Battle">
         <item name="android:windowFullscreen">true</item>
-        <item name="android:windowKeepScreenOn">true</item>
     </style>
 
 </resources>

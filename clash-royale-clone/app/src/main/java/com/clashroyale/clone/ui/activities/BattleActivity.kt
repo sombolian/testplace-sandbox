@@ -211,7 +211,7 @@ class BattleActivity : AppCompatActivity() {
             textSize = 9f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
-            isFakeBoldText = true
+            paint.isFakeBoldText = true
             maxLines = 1
             setShadowLayer(2f, 0f, 1f, Color.BLACK)
         }
@@ -225,7 +225,7 @@ class BattleActivity : AppCompatActivity() {
             textSize = 14f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
-            isFakeBoldText = true
+            paint.isFakeBoldText = true
             val badgeSize = 32
             layoutParams = FrameLayout.LayoutParams(badgeSize, badgeSize).apply {
                 gravity = Gravity.TOP or Gravity.START

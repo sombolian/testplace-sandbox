@@ -121,7 +121,7 @@ class DeckBuilderActivity : AppCompatActivity() {
             textSize = 9f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
-            isFakeBoldText = true
+            paint.isFakeBoldText = true
             maxLines = 2
             setShadowLayer(2f, 0f, 1f, Color.BLACK)
         })
@@ -212,7 +212,7 @@ class DeckBuilderActivity : AppCompatActivity() {
             textSize = 9f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
-            isFakeBoldText = true
+            paint.isFakeBoldText = true
             maxLines = 2
             setShadowLayer(2f, 0f, 1f, Color.BLACK)
         })
@@ -244,7 +244,7 @@ class DeckBuilderActivity : AppCompatActivity() {
             textSize = 12f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
-            isFakeBoldText = true
+            paint.isFakeBoldText = true
             val badgeSize = 28
             layoutParams = FrameLayout.LayoutParams(badgeSize, badgeSize).apply {
                 gravity = Gravity.TOP or Gravity.START

@@ -188,7 +188,7 @@ class HomeActivity : AppCompatActivity() {
             bg.shape = GradientDrawable.OVAL
             bg.setColor(Color.rgb(156, 39, 176))
             background = bg
-            isFakeBoldText = true
+            paint.isFakeBoldText = true
         }
 
         cardLayout.addView(cardBg)
