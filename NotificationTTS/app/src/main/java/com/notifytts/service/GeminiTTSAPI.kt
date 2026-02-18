@@ -178,7 +178,8 @@ class GeminiTTSAPI(private val cacheDir: File) {
     }
 
     /**
-     * Verifies that the API key is valid by making a minimal request.
+     * Verifies that the API key is valid by fetching the TTS model info (lightweight GET).
+     * Does NOT generate audio - just checks the key can access the model.
      */
     suspend fun verifyApiKey(apiKey: String): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
@@ -186,87 +187,50 @@ class GeminiTTSAPI(private val cacheDir: File) {
                 return@withContext Result.failure(Exception("API key is empty"))
             }
 
-            val body = JsonObject().apply {
-                add("contents", gson.toJsonTree(listOf(
-                    mapOf("parts" to listOf(mapOf("text" to "Hi")))
-                )))
-                add("generationConfig", JsonObject().apply {
-                    add("response_modalities", gson.toJsonTree(listOf("AUDIO")))
-                    add("speech_config", JsonObject().apply {
-                        add("voice_config", JsonObject().apply {
-                            add("prebuilt_voice_config", JsonObject().apply {
-                                addProperty("voice_name", "Kore")
-                            })
-                        })
-                    })
-                })
-            }
-
-            val url = "$GEMINI_API_BASE/${Constants.DEFAULT_GEMINI_MODEL}:generateContent?key=$apiKey"
+            // Lightweight: just GET the model info, no audio generation
+            val url = "$GEMINI_API_BASE/${Constants.DEFAULT_GEMINI_MODEL}?key=$apiKey"
 
             val request = Request.Builder()
                 .url(url)
-                .addHeader("Content-Type", "application/json")
-                .post(body.toString().toRequestBody(jsonMediaType))
+                .get()
                 .build()
 
-            val response = client.newCall(request).execute()
+            val verifyClient = OkHttpClient.Builder()
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(15, TimeUnit.SECONDS)
+                .build()
 
-            // Use .use {} to ensure response is always closed
-            response.use { resp ->
-                val responseBody = try {
-                    resp.body?.string() ?: ""
-                } catch (e: Exception) {
-                    ""
-                }
+            var response: okhttp3.Response? = null
+            try {
+                response = verifyClient.newCall(request).execute()
+                val code = response.code
+                val responseBody = try { response.body?.string() ?: "" } catch (_: Exception) { "" }
 
-                if (resp.isSuccessful) {
-                    // Verify we actually got audio data in the response
-                    try {
-                        val root = gson.fromJson(responseBody, JsonObject::class.java)
-                        val candidates = root?.getAsJsonArray("candidates")
-                        if (candidates != null && candidates.size() > 0) {
-                            val inlineData = candidates[0].asJsonObject
-                                .getAsJsonObject("content")
-                                ?.getAsJsonArray("parts")
-                                ?.get(0)?.asJsonObject
-                                ?.getAsJsonObject("inlineData")
-                            if (inlineData?.get("data") != null) {
-                                Result.success(true)
-                            } else {
-                                Result.failure(Exception("API responded but no audio data returned"))
-                            }
-                        } else {
-                            Result.failure(Exception("API responded but no candidates in response"))
-                        }
-                    } catch (e: Exception) {
-                        // Response was 200 but couldn't parse - still consider it valid
-                        Log.w(TAG, "Verify: 200 but parse error: ${e.message}")
+                when {
+                    response.isSuccessful -> {
+                        Log.d(TAG, "API key verified successfully (model info returned)")
                         Result.success(true)
                     }
-                } else {
-                    val code = resp.code
-                    val errorMsg = when (code) {
-                        400 -> {
-                            val detail = extractErrorMessage(responseBody)
-                            "Invalid request${if (detail != null) ": $detail" else ""}"
-                        }
-                        401 -> "Invalid API key"
-                        403 -> "API key not authorized for Gemini TTS"
-                        404 -> "TTS model not found (${Constants.DEFAULT_GEMINI_MODEL}). The model may have been updated."
-                        429 -> "Rate limited - try again later"
-                        else -> {
-                            val detail = extractErrorMessage(responseBody)
-                            "API error $code${if (detail != null) ": $detail" else ""}"
-                        }
+                    code == 400 -> {
+                        val detail = extractErrorMessage(responseBody)
+                        Result.failure(Exception("Invalid request${if (detail != null) ": $detail" else ""}"))
                     }
-                    Log.e(TAG, "Verify failed: $errorMsg (full response: ${responseBody.take(500)})")
-                    Result.failure(Exception(errorMsg))
+                    code == 401 -> Result.failure(Exception("Invalid API key"))
+                    code == 403 -> Result.failure(Exception("API key not authorized for Gemini TTS"))
+                    code == 404 -> Result.failure(Exception("TTS model not found (${Constants.DEFAULT_GEMINI_MODEL}). The model may have been updated."))
+                    code == 429 -> Result.failure(Exception("Rate limited - try again later"))
+                    else -> {
+                        val detail = extractErrorMessage(responseBody)
+                        Result.failure(Exception("API error $code${if (detail != null) ": $detail" else ""}"))
+                    }
                 }
+            } finally {
+                try { response?.close() } catch (_: Exception) {}
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "verifyApiKey exception: ${e.javaClass.simpleName}: ${e.message}", e)
-            Result.failure(e)
+        } catch (e: Throwable) {
+            // Catch Throwable (not just Exception) to prevent any crash
+            Log.e(TAG, "verifyApiKey error: ${e.javaClass.simpleName}: ${e.message}", e)
+            Result.failure(Exception(e.message ?: "Verification failed"))
         }
     }
 

@@ -15,10 +15,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import android.util.Log
 import com.notifytts.data.GeminiVoice
 import com.notifytts.data.PreferencesManager
 import com.notifytts.service.GeminiTTSAPI
 import com.notifytts.ui.components.*
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -89,7 +91,12 @@ fun TTSSettingsScreen() {
                         if (apiKey.isBlank()) return@OutlinedButton
                         isVerifying = true
                         apiStatus = "Verifying..."
-                        scope.launch {
+                        val handler = CoroutineExceptionHandler { _, throwable ->
+                            Log.e("TTSSettings", "Verify coroutine crashed: ${throwable.message}", throwable)
+                            apiStatus = "Error: ${throwable.message ?: "Unexpected crash"}"
+                            isVerifying = false
+                        }
+                        scope.launch(handler) {
                             try {
                                 val result = api.verifyApiKey(apiKey)
                                 result.fold(
@@ -100,7 +107,8 @@ fun TTSSettingsScreen() {
                                         apiStatus = "Error: ${error.message ?: "Unknown error"}"
                                     }
                                 )
-                            } catch (e: Exception) {
+                            } catch (e: Throwable) {
+                                Log.e("TTSSettings", "Verify exception: ${e.message}", e)
                                 apiStatus = "Error: ${e.message ?: "Unexpected error"}"
                             } finally {
                                 isVerifying = false
