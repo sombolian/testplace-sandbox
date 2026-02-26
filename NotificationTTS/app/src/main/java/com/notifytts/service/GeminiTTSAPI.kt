@@ -19,12 +19,39 @@ import java.util.concurrent.TimeUnit
 
 class GeminiTTSAPI(private val cacheDir: File) {
 
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .build()
+    private val gson = Gson()
+    private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
+
     companion object {
         private const val TAG = "GeminiTTSAPI"
         private const val GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
         private const val SAMPLE_RATE = 24000
         private const val CHANNELS = 1
         private const val BITS_PER_SAMPLE = 16
+
+        /** Tone presets mapped to system instructions for consistent TTS delivery */
+        val TONE_PRESETS: Map<String, String> = linkedMapOf(
+            "neutral" to "Read the following notification text aloud in a calm, neutral, and consistent tone. Do not add emotion, excitement, or dramatic inflection. Keep the delivery even and steady throughout.",
+            "calm" to "Read the following notification text aloud in a soft, calm, and relaxed tone. Speak gently and steadily with a soothing delivery.",
+            "friendly" to "Read the following notification text aloud in a warm, friendly tone. Keep it consistently pleasant and approachable without becoming overly excited.",
+            "professional" to "Read the following notification text aloud in a professional, matter-of-fact tone. Be clear, concise, and businesslike with no emotional variation.",
+            "energetic" to "Read the following notification text aloud in an upbeat, energetic tone. Be lively and enthusiastic but stay consistent throughout.",
+            "custom" to "" // User-defined instruction
+        )
+
+        val TONE_LABELS: Map<String, String> = linkedMapOf(
+            "neutral" to "Neutral",
+            "calm" to "Calm & Relaxed",
+            "friendly" to "Warm & Friendly",
+            "professional" to "Professional",
+            "energetic" to "Energetic",
+            "custom" to "Custom"
+        )
 
         /** All 30 built-in Gemini TTS voices */
         val VOICES: List<GeminiVoice> = listOf(
@@ -63,23 +90,22 @@ class GeminiTTSAPI(private val cacheDir: File) {
         )
     }
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
-        .build()
-    private val gson = Gson()
-    private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
-
     suspend fun synthesize(
         text: String,
         apiKey: String,
         voiceName: String = Constants.DEFAULT_VOICE_NAME,
         modelId: String = Constants.DEFAULT_GEMINI_MODEL,
-        speed: Float = Constants.DEFAULT_SPEED
+        speed: Float = Constants.DEFAULT_SPEED,
+        toneInstruction: String? = null
     ): Result<File> = withContext(Dispatchers.IO) {
         try {
             val body = JsonObject().apply {
+                // Add system instruction for consistent tone if provided
+                if (!toneInstruction.isNullOrBlank()) {
+                    add("system_instruction", JsonObject().apply {
+                        add("parts", gson.toJsonTree(listOf(mapOf("text" to toneInstruction))))
+                    })
+                }
                 add("contents", gson.toJsonTree(listOf(
                     mapOf("parts" to listOf(mapOf("text" to text)))
                 )))

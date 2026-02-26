@@ -183,14 +183,23 @@ class TTSManager(private val context: Context) {
             return
         }
 
-        Log.d(TAG, "Generating TTS: voice=${prefs.geminiVoiceName}, model=${prefs.geminiModel}, text='${ttsText.take(50)}...'")
+        // Resolve tone instruction
+        val toneKey = prefs.ttsTone
+        val toneInstruction = if (toneKey == "custom") {
+            prefs.customToneInstruction
+        } else {
+            GeminiTTSAPI.TONE_PRESETS[toneKey]
+        }
+
+        Log.d(TAG, "Generating TTS: voice=${prefs.geminiVoiceName}, model=${prefs.geminiModel}, tone=$toneKey, text='${ttsText.take(50)}...'")
 
         val result = geminiTTSAPI.synthesize(
             text = ttsText,
             apiKey = apiKey,
             voiceName = prefs.geminiVoiceName,
             modelId = prefs.geminiModel,
-            speed = prefs.ttsSpeed
+            speed = prefs.ttsSpeed,
+            toneInstruction = toneInstruction
         )
 
         result.fold(

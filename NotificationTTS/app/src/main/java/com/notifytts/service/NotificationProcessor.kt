@@ -155,14 +155,34 @@ class NotificationProcessor(
     }
 
     private fun formatMessage(appName: String, title: String, content: String, isRepeatSender: Boolean = false): String {
-        var format = prefs.messageFormat
-
-        // If same app+title was recently read, skip app name and title to avoid repetition
-        val appPart = if (prefs.readAppName && !isRepeatSender) appName else ""
-        val titlePart = if (prefs.readTitle && !isRepeatSender) title else ""
         val contentPart = if (prefs.readContent) content else ""
 
-        var result = format
+        if (isRepeatSender) {
+            // Repeat sender within 2 min: skip both app name and title, read content only
+            var result = contentPart
+
+            // Apply replacement keyword rules
+            val keywordRules = prefs.getKeywordRules()
+            for (rule in keywordRules) {
+                if (rule.action == KeywordAction.REPLACE) {
+                    result = if (rule.isRegex) {
+                        try { result.replace(Regex(rule.pattern, RegexOption.IGNORE_CASE), "") } catch (_: Exception) { result }
+                    } else {
+                        result.replace(rule.pattern, "", ignoreCase = true)
+                    }
+                }
+            }
+
+            result = result.replace(Regex("\\s+"), " ").trim()
+            if (result.length > prefs.maxTextLength) result = result.take(prefs.maxTextLength)
+            return result
+        }
+
+        // First message from this sender: always include app name and title
+        val appPart = if (prefs.readAppName) appName else ""
+        val titlePart = if (prefs.readTitle) title else ""
+
+        var result = prefs.messageFormat
             .replace("{app}", appPart)
             .replace("{title}", titlePart)
             .replace("{text}", contentPart)

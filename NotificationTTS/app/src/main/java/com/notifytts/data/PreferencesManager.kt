@@ -182,6 +182,16 @@ class PreferencesManager(context: Context) {
         get() = prefs.getBoolean("strip_emojis", false)
         set(value) = prefs.edit().putBoolean("strip_emojis", value).apply()
 
+    /** TTS tone/mood preset key for consistent voice delivery */
+    var ttsTone: String
+        get() = prefs.getString("tts_tone", "neutral") ?: "neutral"
+        set(value) = prefs.edit().putString("tts_tone", value).apply()
+
+    /** Custom tone instruction (used when ttsTone == "custom") */
+    var customToneInstruction: String
+        get() = prefs.getString("custom_tone_instruction", "") ?: ""
+        set(value) = prefs.edit().putString("custom_tone_instruction", value).apply()
+
     // ── Quiet Hours ──────────────────────────────────────────────────
 
     var quietHours: QuietHours

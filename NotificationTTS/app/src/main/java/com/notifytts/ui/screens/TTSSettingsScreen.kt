@@ -33,6 +33,9 @@ fun TTSSettingsScreen() {
     var fallbackTts by remember { mutableStateOf(prefs.fallbackToDeviceTts) }
     var useDeviceOnly by remember { mutableStateOf(prefs.useDeviceTtsOnly) }
 
+    var ttsTone by remember { mutableStateOf(prefs.ttsTone) }
+    var customToneInstruction by remember { mutableStateOf(prefs.customToneInstruction) }
+
     var showVoicePicker by remember { mutableStateOf(false) }
     var apiStatus by remember { mutableStateOf("") }
     var isVerifying by remember { mutableStateOf(false) }
@@ -205,6 +208,72 @@ fun TTSSettingsScreen() {
                 valueRange = 0.5f..2.0f,
                 valueLabel = "%.1fx".format(speed)
             )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Tone / Mood
+        SectionHeader("Tone & Mood")
+
+        SettingsCard {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Voice Tone",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Controls how the voice sounds. Ensures consistent delivery instead of random mood changes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Tone preset chips - 2 rows
+                val toneEntries = GeminiTTSAPI.TONE_LABELS.entries.toList()
+                for (row in toneEntries.chunked(3)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        for ((key, label) in row) {
+                            FilterChip(
+                                selected = ttsTone == key,
+                                onClick = {
+                                    ttsTone = key
+                                    prefs.ttsTone = key
+                                },
+                                label = { Text(label, style = MaterialTheme.typography.bodySmall) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        // Fill remaining space if row has fewer than 3 items
+                        repeat(3 - row.size) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+
+                // Custom instruction text field
+                if (ttsTone == "custom") {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = customToneInstruction,
+                        onValueChange = {
+                            customToneInstruction = it
+                            prefs.customToneInstruction = it
+                        },
+                        label = { Text("Custom tone instruction") },
+                        placeholder = { Text("e.g., Speak in a cheerful, consistent tone...") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        maxLines = 4,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
