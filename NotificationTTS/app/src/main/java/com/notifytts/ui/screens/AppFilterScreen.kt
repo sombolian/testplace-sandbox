@@ -1,7 +1,8 @@
 package com.notifytts.ui.screens
 
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,12 +13,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.notifytts.data.AppFilterEntry
 import com.notifytts.data.FilterMode
 import com.notifytts.data.PreferencesManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -27,30 +33,33 @@ fun AppFilterScreen() {
     var filterMode by remember { mutableStateOf(prefs.appFilterMode) }
     var filterList by remember { mutableStateOf(prefs.getAppFilterList()) }
     var searchQuery by remember { mutableStateOf("") }
-    var showSystemApps by remember { mutableStateOf(false) }
 
-    // Load installed apps
-    val installedApps = remember {
+    // Load installed apps asynchronously to avoid freezing the UI
+    var installedApps by remember { mutableStateOf<List<AppFilterEntry>?>(null) }
+    LaunchedEffect(Unit) {
         val pm = context.packageManager
-        pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            .filter { app ->
-                pm.getLaunchIntentForPackage(app.packageName) != null
-            }
-            .map { app ->
-                AppFilterEntry(
-                    packageName = app.packageName,
-                    appName = pm.getApplicationLabel(app).toString(),
-                    enabled = filterList[app.packageName]?.enabled ?: false
-                )
-            }
-            .sortedBy { it.appName.lowercase() }
+        val currentFilterList = filterList
+        installedApps = withContext(Dispatchers.IO) {
+            pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                .filter { app ->
+                    pm.getLaunchIntentForPackage(app.packageName) != null
+                }
+                .map { app ->
+                    AppFilterEntry(
+                        packageName = app.packageName,
+                        appName = pm.getApplicationLabel(app).toString(),
+                        enabled = currentFilterList[app.packageName]?.enabled ?: false
+                    )
+                }
+                .sortedBy { it.appName.lowercase() }
+        }
     }
 
-    val filteredApps = remember(searchQuery, showSystemApps, installedApps) {
-        installedApps.filter { app ->
-            (searchQuery.isBlank() ||
+    val filteredApps = remember(searchQuery, installedApps) {
+        installedApps?.filter { app ->
+            searchQuery.isBlank() ||
                     app.appName.contains(searchQuery, ignoreCase = true) ||
-                    app.packageName.contains(searchQuery, ignoreCase = true))
+                    app.packageName.contains(searchQuery, ignoreCase = true)
         }
     }
 
@@ -139,24 +148,30 @@ fun AppFilterScreen() {
                 .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            TextButton(onClick = {
-                val newList = filterList.toMutableMap()
-                filteredApps.forEach { app ->
-                    newList[app.packageName] = app.copy(enabled = true)
-                }
-                filterList = newList
-                prefs.setAppFilterList(newList)
-            }) {
+            TextButton(
+                onClick = {
+                    val newList = filterList.toMutableMap()
+                    filteredApps?.forEach { app ->
+                        newList[app.packageName] = app.copy(enabled = true)
+                    }
+                    filterList = newList
+                    prefs.setAppFilterList(newList)
+                },
+                enabled = filteredApps != null
+            ) {
                 Text("Select All")
             }
-            TextButton(onClick = {
-                val newList = filterList.toMutableMap()
-                filteredApps.forEach { app ->
-                    newList[app.packageName] = app.copy(enabled = false)
-                }
-                filterList = newList
-                prefs.setAppFilterList(newList)
-            }) {
+            TextButton(
+                onClick = {
+                    val newList = filterList.toMutableMap()
+                    filteredApps?.forEach { app ->
+                        newList[app.packageName] = app.copy(enabled = false)
+                    }
+                    filterList = newList
+                    prefs.setAppFilterList(newList)
+                },
+                enabled = filteredApps != null
+            ) {
                 Text("Deselect All")
             }
 
@@ -170,52 +185,126 @@ fun AppFilterScreen() {
             )
         }
 
-        // App list
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 80.dp)
-        ) {
-            items(filteredApps, key = { it.packageName }) { app ->
-                val isSelected = filterList[app.packageName]?.enabled ?: false
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = {
-                        val newList = filterList.toMutableMap()
-                        newList[app.packageName] = app.copy(enabled = !isSelected)
-                        filterList = newList
-                        prefs.setAppFilterList(newList)
-                    }
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
+        // App list or loading skeletons
+        val apps = filteredApps
+        if (apps == null) {
+            // Loading skeletons
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 80.dp)
+            ) {
+                items(12) {
+                    SkeletonAppRow()
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 80.dp)
+            ) {
+                items(apps, key = { it.packageName }) { app ->
+                    val isSelected = filterList[app.packageName]?.enabled ?: false
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            val newList = filterList.toMutableMap()
+                            newList[app.packageName] = app.copy(enabled = !isSelected)
+                            filterList = newList
+                            prefs.setAppFilterList(newList)
+                        }
                     ) {
-                        Checkbox(
-                            checked = isSelected,
-                            onCheckedChange = { checked ->
-                                val newList = filterList.toMutableMap()
-                                newList[app.packageName] = app.copy(enabled = checked)
-                                filterList = newList
-                                prefs.setAppFilterList(newList)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = isSelected,
+                                onCheckedChange = { checked ->
+                                    val newList = filterList.toMutableMap()
+                                    newList[app.packageName] = app.copy(enabled = checked)
+                                    filterList = newList
+                                    prefs.setAppFilterList(newList)
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = app.appName,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Text(
+                                    text = app.packageName,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = app.appName,
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                            Text(
-                                text = app.packageName,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SkeletonAppRow() {
+    val shimmerColors = listOf(
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+    )
+
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val translateAnim = transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1000f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "shimmer"
+    )
+
+    val brush = Brush.linearGradient(
+        colors = shimmerColors,
+        start = Offset(translateAnim.value - 200f, 0f),
+        end = Offset(translateAnim.value, 0f)
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Checkbox placeholder
+        Box(
+            modifier = Modifier
+                .size(20.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(brush)
+        )
+        Spacer(modifier = Modifier.width(20.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            // App name placeholder
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.5f)
+                    .height(16.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(brush)
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            // Package name placeholder
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.7f)
+                    .height(12.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(brush)
+            )
         }
     }
 }
