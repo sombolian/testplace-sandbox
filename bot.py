@@ -34,8 +34,15 @@ def save_game(user_id: int, state: GameState):
 def load_game(user_id: int) -> GameState | None:
     path = SAVE_DIR / f"{user_id}.json"
     if path.exists():
-        with open(path) as f:
-            return GameState.from_dict(json.load(f))
+        try:
+            with open(path) as f:
+                data = f.read().strip()
+                if not data:
+                    return None
+                return GameState.from_dict(json.loads(data))
+        except Exception as e:
+            log.warning(f"Corrupt save for {user_id}, resetting: {e}")
+            path.unlink(missing_ok=True)
     return None
 
 def get_state(user_id: int) -> GameState:
