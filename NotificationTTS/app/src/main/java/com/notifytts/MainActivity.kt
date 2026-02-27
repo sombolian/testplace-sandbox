@@ -10,10 +10,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -87,15 +89,21 @@ fun MainScreen() {
             }
 
             TopAppBar(
-                title = { Text(title) },
+                title = {
+                    Text(
+                        text = title,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 navigationIcon = {
                     if (currentRoute == Screen.TTSSettings.route) {
                         IconButton(onClick = { navController.popBackStack() }) {
                             Icon(
-                                imageVector = Icons.Filled.KeyboardArrowLeft,
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Back"
                             )
                         }
@@ -105,18 +113,28 @@ fun MainScreen() {
         },
         bottomBar = {
             if (currentRoute != Screen.TTSSettings.route) {
-                NavigationBar {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 0.dp
+                ) {
                     bottomNavItems.forEach { screen ->
+                        val selected = currentRoute == screen.route
                         NavigationBarItem(
                             icon = {
                                 Icon(
-                                    imageVector = if (currentRoute == screen.route) screen.selectedIcon
+                                    imageVector = if (selected) screen.selectedIcon
                                     else screen.unselectedIcon,
                                     contentDescription = screen.title
                                 )
                             },
-                            label = { Text(screen.title) },
-                            selected = currentRoute == screen.route,
+                            label = {
+                                Text(
+                                    text = screen.title,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            },
+                            selected = selected,
                             onClick = {
                                 navController.navigate(screen.route) {
                                     popUpTo(navController.graph.findStartDestination().id) {
@@ -130,7 +148,8 @@ fun MainScreen() {
                     }
                 }
             }
-        }
+        },
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         NavHost(
             navController = navController,

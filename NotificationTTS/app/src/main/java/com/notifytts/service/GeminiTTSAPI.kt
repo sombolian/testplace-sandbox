@@ -34,13 +34,13 @@ class GeminiTTSAPI(private val cacheDir: File) {
         private const val CHANNELS = 1
         private const val BITS_PER_SAMPLE = 16
 
-        /** Tone presets mapped to system instructions for consistent TTS delivery */
+        /** Tone presets — embedded as director's notes in the text prompt (TTS models don't support system_instruction) */
         val TONE_PRESETS: Map<String, String> = linkedMapOf(
-            "neutral" to "Read the following notification text aloud in a calm, neutral, and consistent tone. Do not add emotion, excitement, or dramatic inflection. Keep the delivery even and steady throughout.",
-            "calm" to "Read the following notification text aloud in a soft, calm, and relaxed tone. Speak gently and steadily with a soothing delivery.",
-            "friendly" to "Read the following notification text aloud in a warm, friendly tone. Keep it consistently pleasant and approachable without becoming overly excited.",
-            "professional" to "Read the following notification text aloud in a professional, matter-of-fact tone. Be clear, concise, and businesslike with no emotional variation.",
-            "energetic" to "Read the following notification text aloud in an upbeat, energetic tone. Be lively and enthusiastic but stay consistent throughout.",
+            "neutral" to "Say in a calm, neutral, even tone:",
+            "calm" to "Say softly in a calm, relaxed, soothing tone:",
+            "friendly" to "Say in a warm, friendly, pleasant tone:",
+            "professional" to "Say in a professional, matter-of-fact, clear tone:",
+            "energetic" to "Say in an upbeat, energetic, lively tone:",
             "custom" to "" // User-defined instruction
         )
 
@@ -99,22 +99,23 @@ class GeminiTTSAPI(private val cacheDir: File) {
         toneInstruction: String? = null
     ): Result<File> = withContext(Dispatchers.IO) {
         try {
+            // TTS models don't support system_instruction — embed tone in the text content
+            val finalText = if (!toneInstruction.isNullOrBlank()) {
+                "$toneInstruction\n\n$text"
+            } else {
+                text
+            }
+
             val body = JsonObject().apply {
-                // Add system instruction for consistent tone if provided
-                if (!toneInstruction.isNullOrBlank()) {
-                    add("system_instruction", JsonObject().apply {
-                        add("parts", gson.toJsonTree(listOf(mapOf("text" to toneInstruction))))
-                    })
-                }
                 add("contents", gson.toJsonTree(listOf(
-                    mapOf("parts" to listOf(mapOf("text" to text)))
+                    mapOf("parts" to listOf(mapOf("text" to finalText)))
                 )))
                 add("generationConfig", JsonObject().apply {
-                    add("response_modalities", gson.toJsonTree(listOf("AUDIO")))
-                    add("speech_config", JsonObject().apply {
-                        add("voice_config", JsonObject().apply {
-                            add("prebuilt_voice_config", JsonObject().apply {
-                                addProperty("voice_name", voiceName)
+                    add("responseModalities", gson.toJsonTree(listOf("AUDIO")))
+                    add("speechConfig", JsonObject().apply {
+                        add("voiceConfig", JsonObject().apply {
+                            add("prebuiltVoiceConfig", JsonObject().apply {
+                                addProperty("voiceName", voiceName)
                             })
                         })
                     })

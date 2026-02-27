@@ -3,6 +3,7 @@ package com.notifytts.ui.components
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -21,11 +22,12 @@ fun SectionHeader(
     modifier: Modifier = Modifier
 ) {
     Text(
-        text = title,
-        style = MaterialTheme.typography.titleSmall,
+        text = title.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.primary,
-        fontWeight = FontWeight.SemiBold,
-        modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        fontWeight = FontWeight.Bold,
+        letterSpacing = MaterialTheme.typography.labelMedium.letterSpacing * 1.5,
+        modifier = modifier.padding(horizontal = 20.dp, vertical = 10.dp)
     )
 }
 
@@ -40,12 +42,13 @@ fun SettingsSwitch(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        onClick = { if (enabled) onCheckedChange(!checked) }
+        onClick = { if (enabled) onCheckedChange(!checked) },
+        color = MaterialTheme.colorScheme.surface
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 20.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -53,14 +56,18 @@ fun SettingsSwitch(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
                     color = if (enabled) MaterialTheme.colorScheme.onSurface
-                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                 )
                 if (subtitle != null) {
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                            alpha = if (enabled) 0.8f else 0.4f
+                        )
                     )
                 }
             }
@@ -84,25 +91,28 @@ fun SettingsClickable(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        onClick = onClick
+        onClick = onClick,
+        color = MaterialTheme.colorScheme.surface
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 20.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.bodyLarge
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium
                 )
                 if (subtitle != null) {
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                     )
                 }
             }
@@ -122,8 +132,8 @@ fun StatusIndicator(
     )
     Box(
         modifier = modifier
-            .size(12.dp)
-            .clip(RoundedCornerShape(6.dp))
+            .size(10.dp)
+            .clip(CircleShape)
             .background(color)
     )
 }
@@ -137,10 +147,11 @@ fun SettingsCard(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-        )
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(content = content)
     }
@@ -159,19 +170,32 @@ fun SliderSetting(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = 20.dp, vertical = 10.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge)
             Text(
-                text = valueLabel,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium
             )
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Text(
+                    text = valueLabel,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                )
+            }
         }
+        Spacer(modifier = Modifier.height(4.dp))
         Slider(
             value = value,
             onValueChange = onValueChange,

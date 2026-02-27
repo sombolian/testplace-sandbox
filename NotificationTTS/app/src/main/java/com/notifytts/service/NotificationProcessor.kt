@@ -4,6 +4,7 @@ import android.app.Notification
 import android.content.pm.PackageManager
 import android.os.Build
 import android.service.notification.StatusBarNotification
+import android.util.Log
 import com.notifytts.data.*
 
 class NotificationProcessor(
@@ -31,6 +32,10 @@ class NotificationProcessor(
         val content: String = ""
     )
 
+    companion object {
+        private const val TAG = "NotifProcessor"
+    }
+
     fun process(sbn: StatusBarNotification): ProcessResult {
         val notification = sbn.notification ?: return ProcessResult(false, skipReason = "Null notification")
         val extras = notification.extras
@@ -47,7 +52,29 @@ class NotificationProcessor(
         val text = extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
         val bigText = extras?.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
 
-        val content = bigText ?: text
+        // Extract richer text from notification extras
+        // Apps like Telegram put actual message content in EXTRA_TEXT_LINES or EXTRA_BIG_TEXT
+        // while EXTRA_TEXT may only say "posted 2 photos" or "photo"
+        val textLines = try {
+            extras?.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
+                ?.mapNotNull { cs -> cs?.toString()?.takeIf { s -> s.isNotBlank() } }
+                ?.takeIf { list -> list.isNotEmpty() }
+        } catch (_: Exception) { null }
+
+        // Build the best content: prefer text lines (if text is a media summary) > big text > text
+        val content: String = when {
+            textLines != null && isMediaSummary(text) -> {
+                // Text lines contain the actual messages; join the most recent ones
+                textLines.takeLast(3).joinToString(". ")
+            }
+            !bigText.isNullOrBlank() -> bigText
+            textLines != null && textLines.last().length > text.length -> textLines.last()
+            else -> text
+        }
+
+        Log.d(TAG, "Notification from $appName: title='$title', text='$text', bigText='${bigText?.take(50)}', " +
+                "textLines=${textLines?.size ?: 0}, content='${content.take(80)}'")
+
 
         // Check if notification is empty
         if (prefs.ignoreEmpty && title.isBlank() && content.isBlank()) {
@@ -215,5 +242,15 @@ class NotificationProcessor(
         }
 
         return result
+    }
+
+    /** Detects summary-only text like "posted 2 photos", "photo", "video", "sticker" etc. */
+    private fun isMediaSummary(text: String): Boolean {
+        val t = text.trim().lowercase()
+        return t.matches(Regex("(posted )?\\d+ photos?")) ||
+                t.matches(Regex("(posted )?\\d+ videos?")) ||
+                t.matches(Regex("(posted )?\\d+ (files?|stickers?|gifs?|documents?)")) ||
+                t in listOf("photo", "video", "sticker", "gif", "voice message", "video message",
+                    "document", "file", "audio", "animation", "contact", "location")
     }
 }

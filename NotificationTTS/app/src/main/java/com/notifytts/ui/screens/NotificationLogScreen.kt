@@ -162,7 +162,7 @@ private fun LogEntryItem(entry: NotificationLogEntry) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 3.dp),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         onClick = { expanded = !expanded },
         colors = CardDefaults.cardColors(
             containerColor = when (entry.ttsStatus) {
