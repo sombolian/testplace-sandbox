@@ -339,11 +339,18 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
         requestAudioFocus()
 
         try {
-            val audioUsage = prefs.audioUsageType
+            // When Bluetooth is connected, use USAGE_MEDIA to ensure audio routes to A2DP.
+            // USAGE_NOTIFICATION plays through the phone speaker on most Android devices
+            // even when Bluetooth headphones are connected.
+            val effectiveUsage = if (!prefs.alsoSpeaker && findHeadphoneOutputDevice() != null) {
+                AudioAttributes.USAGE_MEDIA
+            } else {
+                prefs.audioUsageType
+            }
             mediaPlayer = MediaPlayer().apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(audioUsage)
+                        .setUsage(effectiveUsage)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build()
                 )
@@ -471,6 +478,21 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
         deviceTts?.apply {
             language = Locale("he", "IL")
             setSpeechRate(prefs.ttsSpeed)
+
+            // Set audio attributes to USAGE_MEDIA when headphones are connected
+            // so Android routes TTS audio through A2DP, not the phone speaker
+            val effectiveUsage = if (!prefs.alsoSpeaker && findHeadphoneOutputDevice() != null) {
+                AudioAttributes.USAGE_MEDIA
+            } else {
+                prefs.audioUsageType
+            }
+            setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(effectiveUsage)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+
             setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
                     isPlayingAudio = true
@@ -521,11 +543,16 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
     }
 
     private fun requestAudioFocus() {
-        val audioUsage = prefs.audioUsageType
+        // Use USAGE_MEDIA when headphones are connected to ensure audio focus goes through the right stream
+        val effectiveUsage = if (!prefs.alsoSpeaker && findHeadphoneOutputDevice() != null) {
+            AudioAttributes.USAGE_MEDIA
+        } else {
+            prefs.audioUsageType
+        }
         focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
             .setAudioAttributes(
                 AudioAttributes.Builder()
-                    .setUsage(audioUsage)
+                    .setUsage(effectiveUsage)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build()
             )
