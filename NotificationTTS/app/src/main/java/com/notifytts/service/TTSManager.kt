@@ -1,7 +1,12 @@
 package com.notifytts.service
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioAttributes
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
@@ -24,7 +29,7 @@ data class TTSQueueItem(
     val onResult: ((success: Boolean, error: String?) -> Unit)? = null
 )
 
-class TTSManager(private val context: Context) {
+class TTSManager(private val context: Context, private val bluetoothMonitor: BluetoothMonitor? = null) {
 
     companion object {
         private const val TAG = "TTSManager"
@@ -50,8 +55,83 @@ class TTSManager(private val context: Context) {
     @Volatile private var audioDeferred: CompletableDeferred<Pair<Boolean, String>>? = null
     @Volatile private var deviceTtsDeferred: CompletableDeferred<Boolean>? = null
 
+    // Real-time audio route monitoring - stops playback if output switches to speaker
+    private val audioDeviceCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+            if (!isPlayingAudio) return
+            val removedHeadphone = removedDevices?.any { device ->
+                device.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                device.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                device.type == AudioDeviceInfo.TYPE_BLE_SPEAKER ||
+                device.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                device.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                device.type == AudioDeviceInfo.TYPE_USB_HEADSET
+            } == true
+
+            if (removedHeadphone && !isAudioOutputSafe()) {
+                Log.w(TAG, "Audio device removed during playback - stopping to prevent speaker output")
+                stopPlaybackImmediately()
+            }
+        }
+    }
+
+    // ACTION_AUDIO_BECOMING_NOISY: fired when audio output switches from private (headphones) to public (speaker)
+    private val noisyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(ctx: Context?, intent: Intent?) {
+            if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY && isPlayingAudio) {
+                Log.w(TAG, "Audio becoming noisy (headphones removed) - stopping playback immediately")
+                stopPlaybackImmediately()
+            }
+        }
+    }
+
     init {
         initDeviceTts()
+        // Register real-time audio route monitoring
+        audioManager.registerAudioDeviceCallback(audioDeviceCallback, null)
+        context.registerReceiver(
+            noisyReceiver,
+            IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
+        )
+    }
+
+    /**
+     * Check if audio output is safe (going to headphones/earbuds, not the phone speaker).
+     * Returns true if the user explicitly allows speaker output (alsoSpeaker setting),
+     * or if headphones/earbuds are currently connected.
+     */
+    private fun isAudioOutputSafe(): Boolean {
+        if (prefs.alsoSpeaker) return true
+        return bluetoothMonitor?.isAnyHeadphonesConnected() ?: true
+    }
+
+    /** Immediately stop all playback and clear the queue. Used when audio route becomes unsafe. */
+    private fun stopPlaybackImmediately() {
+        isPlayingAudio = false
+
+        // Stop MediaPlayer
+        currentMediaPlayer?.let {
+            try { it.stop(); it.release() } catch (_: Exception) {}
+        }
+        currentMediaPlayer = null
+
+        // Stop device TTS
+        deviceTts?.stop()
+
+        // Fail the pending deferreds - audio route is unsafe
+        audioDeferred?.complete(Pair(false, "Audio route changed to speaker - stopped"))
+        audioDeferred = null
+        deviceTtsDeferred?.complete(false)
+        deviceTtsDeferred = null
+
+        // Clear the queue - don't let anything else play through the speaker
+        while (queue.isNotEmpty()) {
+            val item = queue.poll()
+            item?.onResult?.invoke(false, "Headphones disconnected - queue cleared")
+        }
+
+        abandonAudioFocus()
     }
 
     private fun initDeviceTts() {
@@ -160,6 +240,15 @@ class TTSManager(private val context: Context) {
     }
 
     private suspend fun speakInternal(item: TTSQueueItem) {
+        // CRITICAL: Re-check audio output right before playback.
+        // The original shouldSpeak() check happened when the notification arrived,
+        // but earbuds may have been removed between then and now.
+        if (!isAudioOutputSafe()) {
+            Log.w(TAG, "Audio output unsafe (no headphones) - refusing to speak")
+            item.onResult?.invoke(false, "No headphones connected - refused to play through speaker")
+            return
+        }
+
         if (prefs.useDeviceTtsOnly) {
             val success = speakWithDeviceTts(item.text)
             item.onResult?.invoke(success, if (success) null else "Device TTS failed")
@@ -260,6 +349,25 @@ class TTSManager(private val context: Context) {
                 )
                 setDataSource(file.absolutePath)
                 prepare()
+            }
+
+            // Force audio to headphones/earbuds if available - never fall back to speaker
+            if (!prefs.alsoSpeaker) {
+                val headphoneDevice = findHeadphoneOutputDevice()
+                if (headphoneDevice != null) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        mediaPlayer.setPreferredDevice(headphoneDevice)
+                        Log.d(TAG, "Forced audio to device: ${headphoneDevice.productName} (type=${headphoneDevice.type})")
+                    }
+                } else {
+                    // No headphone device found at playback time - abort
+                    Log.w(TAG, "No headphone device found at playback time - aborting")
+                    mediaPlayer.release()
+                    file.delete()
+                    abandonAudioFocus()
+                    audioDeferred = null
+                    return@withContext Pair(false, "No headphones connected at playback time")
+                }
             }
 
             val duration = mediaPlayer.duration
@@ -399,6 +507,19 @@ class TTSManager(private val context: Context) {
         }
     }
 
+    /** Find a connected headphone/earbud output device to force audio routing. */
+    private fun findHeadphoneOutputDevice(): AudioDeviceInfo? {
+        val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        // Prefer Bluetooth A2DP (music quality), then BLE, then wired
+        return devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP }
+            ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLE_HEADSET }
+            ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLE_SPEAKER }
+            ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
+            ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES }
+            ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET }
+            ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_USB_HEADSET }
+    }
+
     private fun requestAudioFocus() {
         val audioUsage = prefs.audioUsageType
         focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
@@ -494,6 +615,8 @@ class TTSManager(private val context: Context) {
 
     fun destroy() {
         pause()
+        audioManager.unregisterAudioDeviceCallback(audioDeviceCallback)
+        try { context.unregisterReceiver(noisyReceiver) } catch (_: Exception) {}
         scope.cancel()
         deviceTts?.shutdown()
         geminiTTSAPI.cleanup()

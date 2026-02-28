@@ -28,12 +28,18 @@ class NTTSNotificationListener : NotificationListenerService() {
     override fun onCreate() {
         super.onCreate()
         prefs = PreferencesManager(this)
-        ttsManager = TTSManager(this)
         bluetoothMonitor = BluetoothMonitor(this)
+        ttsManager = TTSManager(this, bluetoothMonitor)
         processor = NotificationProcessor(prefs, packageManager)
 
         bluetoothMonitor.startMonitoring { connected ->
             Log.d(TAG, "Audio device connection changed: $connected")
+            if (!connected && !prefs.alsoSpeaker) {
+                // Headphones disconnected and speaker mode is off - stop everything immediately
+                Log.w(TAG, "Headphones disconnected - pausing TTS and clearing queue to prevent speaker output")
+                ttsManager.pause()
+                ttsManager.resume() // Reset paused state so future notifications work when earbuds reconnect
+            }
         }
 
         startShakeDetector()

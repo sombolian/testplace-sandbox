@@ -57,6 +57,8 @@ class BluetoothMonitor(private val context: Context) {
             addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
             addAction(AudioManager.ACTION_HEADSET_PLUG)
             addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
+            // Fires when audio output switches from private (headphones) to public (speaker)
+            addAction(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
         }
 
         receiver = object : BroadcastReceiver() {
