@@ -9,6 +9,17 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
+private fun com.google.ai.client.generativeai.type.GenerateContentResponse.extractText(): String? {
+    // Access candidate text directly to avoid the exception thrown by .text
+    // when finishReason is MAX_TOKENS
+    return candidates.firstOrNull()
+        ?.content
+        ?.parts
+        ?.filterIsInstance<com.google.ai.client.generativeai.type.TextPart>()
+        ?.joinToString("") { it.text }
+        ?.trim()
+}
+
 @Serializable
 data class NutritionEstimate(
     val description: String = "",
@@ -42,7 +53,7 @@ class GeminiApiService {
                 generationConfig = generationConfig {
                     temperature = 0.1f
                     topP = 0.95f
-                    maxOutputTokens = 1024
+                    maxOutputTokens = 8192
                 }
             )
 
@@ -57,19 +68,8 @@ class GeminiApiService {
                 if (image != null) {
                     append("An image of the meal is also provided. Use both the image and any text description to make your estimate.\n\n")
                 }
-                append("""
-                    Respond ONLY with a valid JSON object (no markdown, no code blocks) with these fields:
-                    {
-                        "description": "Brief description of what was identified",
-                        "calories": <integer total kcal>,
-                        "protein": <grams as decimal>,
-                        "carbs": <grams as decimal>,
-                        "fat": <grams as decimal>,
-                        "fiber": <grams as decimal>,
-                        "confidence": "low" | "medium" | "high",
-                        "tips": "Brief helpful tip about this meal in context of the user's goals"
-                    }
-                """.trimIndent())
+                append("Respond ONLY with a valid JSON object (no markdown, no code blocks, no explanation). Keep the tips field under 20 words. Fields: ")
+                append("""{"description":"...","calories":0,"protein":0.0,"carbs":0.0,"fat":0.0,"fiber":0.0,"confidence":"medium","tips":"..."}""")
             }
 
             val response = if (image != null) {
@@ -82,7 +82,8 @@ class GeminiApiService {
                 model.generateContent(prompt)
             }
 
-            val responseText = response.text?.trim() ?: throw Exception("Empty response from Gemini")
+            val responseText = response.extractText()
+                ?: throw Exception("Empty response from Gemini")
 
             // Clean up response - remove markdown code blocks if present
             val cleanJson = responseText
@@ -110,7 +111,7 @@ class GeminiApiService {
                 apiKey = apiKey,
                 generationConfig = generationConfig {
                     temperature = 0.7f
-                    maxOutputTokens = 512
+                    maxOutputTokens = 2048
                 }
             )
 
@@ -125,7 +126,7 @@ class GeminiApiService {
             """.trimIndent()
 
             val response = model.generateContent(prompt)
-            Result.success(response.text ?: "Keep going! You're making progress.")
+            Result.success(response.extractText() ?: "Keep going! You're making progress.")
         } catch (e: Exception) {
             Result.failure(e)
         }
