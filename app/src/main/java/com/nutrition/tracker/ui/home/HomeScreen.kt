@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -71,14 +73,19 @@ fun HomeScreen(
             )
         }
     ) { padding ->
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
-            contentPadding = PaddingValues(bottom = 96.dp)
+                .padding(padding)
         ) {
-            // Header with gradient
-            item {
+            // Scrollable top section (header + stats + AI coach)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                // Header with gradient
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -90,7 +97,7 @@ fun HomeScreen(
                                 )
                             )
                         )
-                        .padding(horizontal = 20.dp, vertical = 16.dp)
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
                         .statusBarsPadding()
                 ) {
                     Column {
@@ -122,7 +129,7 @@ fun HomeScreen(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
                         // Date navigation
                         Card(
@@ -174,20 +181,18 @@ fun HomeScreen(
                         }
                     }
                 }
-            }
 
-            // Calories & Protein main display
-            item {
+                // Calories & Protein main display
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                        .padding(horizontal = 20.dp, vertical = 6.dp),
                     shape = RoundedCornerShape(24.dp),
                     elevation = CardDefaults.cardElevation(4.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
                     Column(
-                        modifier = Modifier.padding(20.dp),
+                        modifier = Modifier.padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         // Rating badge
@@ -198,7 +203,7 @@ fun HomeScreen(
                             Surface(
                                 color = Color(dayRating.color).copy(alpha = 0.15f),
                                 shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.padding(bottom = 12.dp)
+                                modifier = Modifier.padding(bottom = 8.dp)
                             ) {
                                 Text(
                                     text = "${dayRating.emoji} ${dayRating.label}",
@@ -219,8 +224,8 @@ fun HomeScreen(
                                 target = targetCalories.toFloat(),
                                 color = CaloriesColor,
                                 label = "kcal",
-                                size = 130.dp,
-                                strokeWidth = 14.dp
+                                size = 110.dp,
+                                strokeWidth = 12.dp
                             )
 
                             AnimatedCircularProgress(
@@ -229,12 +234,12 @@ fun HomeScreen(
                                 color = ProteinColor,
                                 label = "protein",
                                 unit = "g",
-                                size = 130.dp,
-                                strokeWidth = 14.dp
+                                size = 110.dp,
+                                strokeWidth = 12.dp
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
                         // Macro bars
                         MacroProgressBar(
@@ -244,7 +249,7 @@ fun HomeScreen(
                             color = CarbsColor,
                             modifier = Modifier.fillMaxWidth()
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                         MacroProgressBar(
                             label = "Fat",
                             current = (summary?.totalFat ?: 0.0).toFloat(),
@@ -254,20 +259,18 @@ fun HomeScreen(
                         )
                     }
                 }
-            }
 
-            // AI Advice card
-            item {
+                // AI Advice card
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                        .padding(horizontal = 20.dp, vertical = 6.dp),
                     shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f)
                     )
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(12.dp)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
@@ -313,61 +316,65 @@ fun HomeScreen(
                 }
             }
 
-            // Meals list header
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "Meals (${meals.size})",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+            // Meals section - takes remaining space
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Meals (${meals.size})",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
 
             if (meals.isEmpty()) {
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(40.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(
-                            Icons.Default.RestaurantMenu,
-                            contentDescription = null,
-                            modifier = Modifier.size(48.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            "No meals logged yet",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            "Tap + to add your first meal",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        Icons.Default.RestaurantMenu,
+                        contentDescription = null,
+                        modifier = Modifier.size(48.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "No meals logged yet",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        "Tap + to add your first meal",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentPadding = PaddingValues(bottom = 80.dp)
+                ) {
+                    items(meals, key = { it.id }) { meal ->
+                        MealCard(
+                            meal = meal,
+                            onDelete = { viewModel.deleteMeal(meal) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 4.dp)
+                                .animateItem()
                         )
                     }
                 }
-            }
-
-            items(meals, key = { it.id }) { meal ->
-                MealCard(
-                    meal = meal,
-                    onDelete = { viewModel.deleteMeal(meal) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 4.dp)
-                        .animateItem()
-                )
             }
         }
     }

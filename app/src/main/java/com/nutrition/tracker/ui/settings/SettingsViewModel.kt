@@ -11,7 +11,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val preferences = UserPreferences(application)
 
     val geminiApiKey = preferences.geminiApiKey.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
-    val geminiModel = preferences.geminiModel.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "gemini-3.1-pro-preview")
+    val geminiModel = preferences.geminiModel.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "gemini-2.0-flash")
     val userName = preferences.userName.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
     val heightCm = preferences.heightCm.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 170)
     val weightKg = preferences.weightKg.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 70.0)

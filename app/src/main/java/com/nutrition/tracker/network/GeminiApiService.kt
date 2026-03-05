@@ -37,7 +37,7 @@ class GeminiApiService {
             }
 
             val model = GenerativeModel(
-                modelName = modelName.ifBlank { "gemini-3.1-pro-preview" },
+                modelName = modelName.ifBlank { "gemini-2.0-flash" },
                 apiKey = apiKey,
                 generationConfig = generationConfig {
                     temperature = 0.1f
@@ -106,7 +106,7 @@ class GeminiApiService {
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
             val model = GenerativeModel(
-                modelName = modelName.ifBlank { "gemini-3.1-pro-preview" },
+                modelName = modelName.ifBlank { "gemini-2.0-flash" },
                 apiKey = apiKey,
                 generationConfig = generationConfig {
                     temperature = 0.7f

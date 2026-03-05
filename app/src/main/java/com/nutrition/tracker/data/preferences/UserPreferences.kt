@@ -46,7 +46,7 @@ class UserPreferences(private val context: Context) {
     }
 
     val geminiApiKey: Flow<String> = context.dataStore.data.map { it[GEMINI_API_KEY] ?: "" }
-    val geminiModel: Flow<String> = context.dataStore.data.map { it[GEMINI_MODEL] ?: "gemini-3.1-pro-preview" }
+    val geminiModel: Flow<String> = context.dataStore.data.map { it[GEMINI_MODEL] ?: "gemini-2.0-flash" }
     val userName: Flow<String> = context.dataStore.data.map { it[USER_NAME] ?: "" }
     val heightCm: Flow<Int> = context.dataStore.data.map { it[HEIGHT_CM] ?: 170 }
     val weightKg: Flow<Double> = context.dataStore.data.map { it[WEIGHT_KG] ?: 70.0 }

@@ -40,7 +40,7 @@ data class OnboardingData(
     val targetCalories: String = "2000",
     val targetProtein: String = "150",
     val geminiApiKey: String = "",
-    val geminiModel: String = "gemini-3.1-pro-preview"
+    val geminiModel: String = "gemini-2.0-flash"
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -480,7 +480,7 @@ private fun ApiSetupStep(data: OnboardingData, onDataChange: (OnboardingData) ->
             singleLine = true,
             shape = RoundedCornerShape(16.dp),
             modifier = Modifier.fillMaxWidth(),
-            supportingText = { Text("Default: gemini-3.1-pro-preview") }
+            supportingText = { Text("Default: gemini-2.0-flash") }
         )
 
         Spacer(modifier = Modifier.height(24.dp))

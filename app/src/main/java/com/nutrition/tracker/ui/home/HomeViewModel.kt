@@ -86,14 +86,25 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             val goal = preferences.fitnessGoal.first()
             val weight = preferences.weightKg.first()
 
-            if (summary != null && apiKey.isNotBlank()) {
-                val summaryText = "Calories: ${summary.totalCalories}/${targetCalories.value}, Protein: ${summary.totalProtein}g/${targetProtein.value}g, Carbs: ${summary.totalCarbs}g, Fat: ${summary.totalFat}g, Meals: ${summary.mealCount}"
-                val context = "Goal: $goal, Weight: ${weight}kg, Target cal: ${targetCalories.value}, Target protein: ${targetProtein.value}g"
-
-                geminiService.getDailyAdvice(apiKey, model, summaryText, context)
-                    .onSuccess { _aiAdvice.value = it }
-                    .onFailure { _aiAdvice.value = null }
+            if (apiKey.isBlank()) {
+                _aiAdvice.value = "Please set your Gemini API key in Settings to use AI Coach."
+                _isLoadingAdvice.value = false
+                return@launch
             }
+
+            if (summary == null || summary.mealCount == 0) {
+                _aiAdvice.value = "Log some meals first so I can give you personalized advice!"
+                _isLoadingAdvice.value = false
+                return@launch
+            }
+
+            val summaryText = "Calories: ${summary.totalCalories}/${targetCalories.value}, Protein: ${summary.totalProtein}g/${targetProtein.value}g, Carbs: ${summary.totalCarbs}g, Fat: ${summary.totalFat}g, Meals: ${summary.mealCount}"
+            val context = "Goal: $goal, Weight: ${weight}kg, Target cal: ${targetCalories.value}, Target protein: ${targetProtein.value}g"
+
+            geminiService.getDailyAdvice(apiKey, model, summaryText, context)
+                .onSuccess { _aiAdvice.value = it }
+                .onFailure { _aiAdvice.value = "Could not get advice: ${it.message}" }
+
             _isLoadingAdvice.value = false
         }
     }
