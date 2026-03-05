@@ -46,6 +46,7 @@ interface MealDao {
                COUNT(*) as mealCount
         FROM meals
         WHERE nutritionDay = :day
+        GROUP BY nutritionDay
     """)
     fun getDaySummary(day: String): Flow<DaySummaryTuple?>
 
