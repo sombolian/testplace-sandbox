@@ -11,7 +11,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val preferences = UserPreferences(application)
 
     val geminiApiKey = preferences.geminiApiKey.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
-    val geminiModel = preferences.geminiModel.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "gemini-2.0-flash")
+    val geminiModel = preferences.geminiModel.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "gemini-3.1-pro-preview")
     val userName = preferences.userName.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
     val heightCm = preferences.heightCm.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 170)
     val weightKg = preferences.weightKg.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 70.0)
@@ -26,7 +26,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val targetFiber = preferences.targetFiber.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 30)
     val mealsPerDay = preferences.mealsPerDay.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 4)
     val waterGoalLiters = preferences.waterGoalLiters.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 3.0)
-    val darkMode = preferences.darkMode.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val darkMode = preferences.darkMode.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
     val customInstructions = preferences.customInstructions.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
     val dietaryRestrictions = preferences.dietaryRestrictions.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
     val allergies = preferences.allergies.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")

@@ -20,6 +20,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -38,7 +40,7 @@ data class OnboardingData(
     val targetCalories: String = "2000",
     val targetProtein: String = "150",
     val geminiApiKey: String = "",
-    val geminiModel: String = "gemini-2.0-flash"
+    val geminiModel: String = "gemini-3.1-pro-preview"
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,6 +48,7 @@ data class OnboardingData(
 fun OnboardingScreen(
     onComplete: (OnboardingData) -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
     var currentStep by remember { mutableIntStateOf(0) }
     var data by remember { mutableStateOf(OnboardingData()) }
     val totalSteps = 5
@@ -143,7 +146,10 @@ fun OnboardingScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (currentStep > 0) {
-                    TextButton(onClick = { currentStep-- }) {
+                    TextButton(onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        currentStep--
+                    }) {
                         Text("Back")
                     }
                 } else {
@@ -158,6 +164,7 @@ fun OnboardingScreen(
 
                 Button(
                     onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         if (currentStep < totalSteps - 1) {
                             currentStep++
                         } else {
@@ -473,7 +480,7 @@ private fun ApiSetupStep(data: OnboardingData, onDataChange: (OnboardingData) ->
             singleLine = true,
             shape = RoundedCornerShape(16.dp),
             modifier = Modifier.fillMaxWidth(),
-            supportingText = { Text("Default: gemini-2.0-flash") }
+            supportingText = { Text("Default: gemini-3.1-pro-preview") }
         )
 
         Spacer(modifier = Modifier.height(24.dp))

@@ -28,8 +28,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -44,6 +46,7 @@ fun AddMealScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
 
     // Navigate back after save
     LaunchedEffect(uiState.isSaved) {
@@ -190,7 +193,10 @@ fun AddMealScreen(
 
             // Analyze button
             Button(
-                onClick = { viewModel.analyzeMeal() },
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.analyzeMeal()
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
@@ -351,7 +357,10 @@ fun AddMealScreen(
 
                         // Save button
                         Button(
-                            onClick = { viewModel.saveMeal() },
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.saveMeal()
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(56.dp),
@@ -402,7 +411,10 @@ fun AddMealScreen(
                         Spacer(modifier = Modifier.height(16.dp))
 
                         Button(
-                            onClick = { viewModel.saveManual() },
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.saveManual()
+                            },
                             modifier = Modifier.fillMaxWidth().height(48.dp),
                             enabled = (uiState.manualCalories.toIntOrNull() ?: 0) > 0,
                             shape = RoundedCornerShape(12.dp)

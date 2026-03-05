@@ -19,6 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -52,11 +54,15 @@ fun HomeScreen(
     val aiAdvice by viewModel.aiAdvice.collectAsState()
     val isLoadingAdvice by viewModel.isLoadingAdvice.collectAsState()
     val today = DateUtils.getNutritionDayDate()
+    val haptic = LocalHapticFeedback.current
 
     Scaffold(
         floatingActionButton = {
             ExtendedFloatingActionButton(
-                onClick = onAddMeal,
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onAddMeal()
+                },
                 icon = { Icon(Icons.Default.Add, "Add meal") },
                 text = { Text("Add Meal") },
                 containerColor = MaterialTheme.colorScheme.primary,

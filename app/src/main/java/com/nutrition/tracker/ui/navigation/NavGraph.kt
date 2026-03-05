@@ -46,9 +46,13 @@ fun NutritionNavGraph(
         composable(Screen.Onboarding.route) {
             OnboardingScreen(
                 onComplete = { data ->
-                    onOnboardingComplete(data)
-                    navController.navigate(Screen.Home.route) {
-                        popUpTo(Screen.Onboarding.route) { inclusive = true }
+                    // Guard against double-navigation which causes crash
+                    val currentRoute = navController.currentBackStackEntry?.destination?.route
+                    if (currentRoute == Screen.Onboarding.route) {
+                        onOnboardingComplete(data)
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.Onboarding.route) { inclusive = true }
+                        }
                     }
                 }
             )

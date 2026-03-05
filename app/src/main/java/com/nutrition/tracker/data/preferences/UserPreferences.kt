@@ -46,7 +46,7 @@ class UserPreferences(private val context: Context) {
     }
 
     val geminiApiKey: Flow<String> = context.dataStore.data.map { it[GEMINI_API_KEY] ?: "" }
-    val geminiModel: Flow<String> = context.dataStore.data.map { it[GEMINI_MODEL] ?: "gemini-2.0-flash" }
+    val geminiModel: Flow<String> = context.dataStore.data.map { it[GEMINI_MODEL] ?: "gemini-3.1-pro-preview" }
     val userName: Flow<String> = context.dataStore.data.map { it[USER_NAME] ?: "" }
     val heightCm: Flow<Int> = context.dataStore.data.map { it[HEIGHT_CM] ?: 170 }
     val weightKg: Flow<Double> = context.dataStore.data.map { it[WEIGHT_KG] ?: 70.0 }
@@ -61,7 +61,7 @@ class UserPreferences(private val context: Context) {
     val targetFiber: Flow<Int> = context.dataStore.data.map { it[TARGET_FIBER] ?: 30 }
     val mealsPerDay: Flow<Int> = context.dataStore.data.map { it[MEALS_PER_DAY] ?: 4 }
     val waterGoalLiters: Flow<Double> = context.dataStore.data.map { it[WATER_GOAL_LITERS] ?: 3.0 }
-    val darkMode: Flow<Boolean> = context.dataStore.data.map { it[DARK_MODE] ?: false }
+    val darkMode: Flow<Boolean> = context.dataStore.data.map { it[DARK_MODE] ?: true }
     val onboardingComplete: Flow<Boolean> = context.dataStore.data.map { it[ONBOARDING_COMPLETE] ?: false }
     val customInstructions: Flow<String> = context.dataStore.data.map { it[CUSTOM_INSTRUCTIONS] ?: "" }
     val dietaryRestrictions: Flow<String> = context.dataStore.data.map { it[DIETARY_RESTRICTIONS] ?: "" }

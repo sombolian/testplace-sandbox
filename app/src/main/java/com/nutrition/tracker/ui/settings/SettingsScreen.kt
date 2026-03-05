@@ -90,7 +90,7 @@ fun SettingsScreen(
                     value = geminiModel,
                     onValueChange = { viewModel.updateString(UserPreferences.GEMINI_MODEL, it) },
                     label = "Model Name",
-                    supportingText = "e.g., gemini-2.0-flash, gemini-1.5-pro"
+                    supportingText = "e.g., gemini-3.1-pro-preview, gemini-2.0-flash"
                 )
             }
 
