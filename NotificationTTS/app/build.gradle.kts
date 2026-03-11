@@ -12,8 +12,8 @@ android {
         applicationId = "com.notifytts"
         minSdk = 26
         targetSdk = 32
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 10
+        versionName = "2.0.0"
     }
 
     buildTypes {
