@@ -813,111 +813,380 @@ def scene_final_black(n_frames):
 
 # ── Audio generation ────────────────────────────────────────────────────────
 
+def note_freq(name):
+    """Convert note name to frequency. e.g. 'C4' -> 261.63"""
+    notes = {'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11}
+    note = name[0]
+    sharp = '#' in name
+    octave = int(name[-1])
+    semitone = notes[note] + (1 if sharp else 0)
+    return 440.0 * (2 ** ((semitone - 9) / 12 + (octave - 4)))
+
+
+def synth_note(freq, duration_s, volume=0.15, decay=0.5, harmonics=None,
+               vibrato=0, detune=0, noise_mix=0):
+    """Synthesize a single note with overtones, vibrato, detune, and noise."""
+    n = int(duration_s * SAMPLE_RATE)
+    t = np.arange(n) / SAMPLE_RATE
+
+    # Vibrato (pitch wobble)
+    vib = 1.0
+    if vibrato > 0:
+        vib = 1.0 + vibrato * np.sin(2 * np.pi * 5.5 * t)
+
+    # Slightly detuned copy for unease
+    f1 = freq * vib
+    f2 = freq * (1 + detune) * vib
+
+    # Fundamental
+    phase1 = 2 * np.pi * np.cumsum(f1) / SAMPLE_RATE
+    phase2 = 2 * np.pi * np.cumsum(f2) / SAMPLE_RATE
+    sig = np.sin(phase1)
+    if detune > 0:
+        sig = 0.6 * sig + 0.4 * np.sin(phase2)
+
+    # Harmonics (overtones)
+    if harmonics:
+        for h_mult, h_vol in harmonics:
+            sig += h_vol * np.sin(phase1 * h_mult)
+
+    # Mix in noise for grit
+    if noise_mix > 0:
+        sig = (1 - noise_mix) * sig + noise_mix * np.random.randn(n)
+
+    # Envelope: attack + exponential decay
+    attack = min(int(0.01 * SAMPLE_RATE), n // 4)
+    env = np.ones(n)
+    env[:attack] = np.linspace(0, 1, attack)
+    decay_samples = n - attack
+    if decay_samples > 0:
+        env[attack:] = np.exp(-np.arange(decay_samples) / (decay_samples * decay))
+
+    return (sig * env * volume).astype(np.float64)
+
+
 def generate_audio(total_frames):
-    """Audio that descends from pleasant to deeply unsettling."""
+    """Musical score that descends from lullaby to nightmare."""
     duration = total_frames / FPS
     n_samples = int(duration * SAMPLE_RATE)
     audio = np.zeros(n_samples, dtype=np.float64)
-    t = np.linspace(0, duration, n_samples, endpoint=False)
-    progress = np.linspace(0, 1, n_samples)  # 0=start, 1=end
+    t_arr = np.linspace(0, duration, n_samples, endpoint=False)
+    progress = np.linspace(0, 1, n_samples)
 
-    # ── Layer 1: Drone that descends in pitch and grows dissonant ──
-    base_freq = 110 - 50 * progress  # A2 descending to ~D1
-    drone = 0.10 * np.sin(2 * np.pi * np.cumsum(base_freq) / SAMPLE_RATE)
-    # Add increasingly detuned harmonics
-    detune = 1 + progress * 0.03  # gets more out of tune
-    drone += 0.06 * np.sin(2 * np.pi * np.cumsum(base_freq * 1.5 * detune) / SAMPLE_RATE)
-    drone += 0.04 * np.sin(2 * np.pi * np.cumsum(base_freq * 2.0 * detune) / SAMPLE_RATE)
-    # Tritone (the devil's interval) fades in during second half
-    tritone_env = np.clip((progress - 0.4) * 2, 0, 1)
-    drone += 0.07 * tritone_env * np.sin(
-        2 * np.pi * np.cumsum(base_freq * math.sqrt(2)) / SAMPLE_RATE)
-    audio += drone
+    def place(signal, time_s):
+        """Place a signal at a given time in the audio buffer."""
+        idx = int(time_s * SAMPLE_RATE)
+        end = min(idx + len(signal), n_samples)
+        if idx < n_samples and end > idx:
+            audio[idx:end] += signal[:end - idx]
 
-    # ── Layer 2: Pleasant chimes early, becoming distorted hits later ──
-    chime_times = np.linspace(0, duration * 0.3, 8)  # pleasant chimes early
-    for ct in chime_times:
-        idx = int(ct * SAMPLE_RATE)
-        chime_len = int(0.3 * SAMPLE_RATE)
-        if idx + chime_len < n_samples:
-            freq = random.choice([523, 659, 784, 1047])  # C major
-            chime = 0.08 * np.sin(2 * np.pi * freq * np.arange(chime_len) / SAMPLE_RATE)
-            env = np.exp(-np.arange(chime_len) / (chime_len * 0.3))
-            audio[idx:idx + chime_len] += chime * env
+    # ════════════════════════════════════════════════════════════════════
+    # LAYER 1: THE MELODY — a music-box lullaby that rots
+    # ════════════════════════════════════════════════════════════════════
+    # A simple, innocent melody in C major (Act I),
+    # that shifts to C minor (Act II), becomes fragmented and detuned
+    # (Act III), and finally collapses into isolated dying notes (Act IV).
 
-    # Dark hits in second half
-    hit_times = np.linspace(duration * 0.5, duration * 0.9, 12)
-    for ht in hit_times:
-        idx = int(ht * SAMPLE_RATE)
-        hit_len = int(0.15 * SAMPLE_RATE)
-        if idx + hit_len < n_samples:
-            freq = random.choice([55, 73, 41, 62])  # low menacing
-            hit = 0.25 * np.sin(2 * np.pi * freq * np.arange(hit_len) / SAMPLE_RATE)
-            env = np.exp(-np.arange(hit_len) / (hit_len * 0.15))
-            hit *= env
-            # Add noise burst
-            hit += 0.1 * np.random.randn(hit_len) * env
-            audio[idx:idx + hit_len] += hit
+    # The melody motif (Twinkle Twinkle / lullaby feel)
+    melody_major = [
+        ('C4', 0.4), ('C4', 0.4), ('G4', 0.4), ('G4', 0.4),
+        ('A4', 0.4), ('A4', 0.4), ('G4', 0.8),
+        ('F4', 0.4), ('F4', 0.4), ('E4', 0.4), ('E4', 0.4),
+        ('D4', 0.4), ('D4', 0.4), ('C4', 0.8),
+    ]
+    # Same melody shifted to minor (flat 3rd, 6th)
+    melody_minor = [
+        ('C4', 0.4), ('C4', 0.4), ('G4', 0.4), ('G4', 0.4),
+        ('G#4', 0.4), ('G#4', 0.4), ('G4', 0.8),
+        ('F4', 0.4), ('F4', 0.4), ('D#4', 0.4), ('D#4', 0.4),
+        ('D4', 0.4), ('D4', 0.4), ('C4', 0.8),
+    ]
+    # Broken/fragmented version — notes missing, wrong intervals
+    melody_broken = [
+        ('C3', 0.6), (None, 0.4), ('F#3', 0.5), (None, 0.3),
+        ('G#3', 0.7), (None, 0.5), ('B3', 0.4),
+        (None, 0.6), ('C3', 0.8), (None, 0.4), ('F#3', 0.5),
+        (None, 0.8), ('C3', 1.2),
+    ]
+    # Final: just isolated, dying notes
+    melody_dying = [
+        ('C3', 1.5), (None, 2.0), ('G2', 2.0), (None, 3.0),
+        ('C2', 3.0), (None, 4.0),
+    ]
 
-    # ── Layer 3: Heartbeat that accelerates ──
-    heartbeat_start = int(0.3 * n_samples)
+    act_boundaries = [0.13, 0.30, 0.63, 0.80]  # rough act starts as fractions
+
+    # ── Act I melody: clean music box ──
+    act1_start = 0.0
+    act1_end = duration * act_boundaries[1]
+    t_pos = act1_start + 0.5  # small intro pause
+    loop_count = 0
+    while t_pos < act1_end:
+        for note_name, dur in melody_major:
+            if t_pos >= act1_end:
+                break
+            sig = synth_note(note_freq(note_name), dur, volume=0.12,
+                             decay=0.4,
+                             harmonics=[(2, 0.3), (3, 0.1), (5, 0.05)])
+            place(sig, t_pos)
+            t_pos += dur
+        loop_count += 1
+        t_pos += 0.3  # gap between loops
+
+    # ── Act II melody: shift to minor, slightly slower, add vibrato ──
+    act2_start = duration * act_boundaries[1]
+    act2_end = duration * act_boundaries[2]
+    t_pos = act2_start + 0.2
+    loop_count = 0
+    while t_pos < act2_end:
+        # First loop: clean minor. Later loops: increasing detune/vibrato
+        loop_decay = max(0.3, 0.6 - loop_count * 0.08)
+        loop_detune = min(0.015, loop_count * 0.003)
+        loop_vibrato = min(0.008, loop_count * 0.002)
+        for note_name, dur in melody_minor:
+            if t_pos >= act2_end:
+                break
+            # Slow down slightly each loop
+            actual_dur = dur * (1.0 + loop_count * 0.08)
+            sig = synth_note(note_freq(note_name), actual_dur,
+                             volume=0.11,
+                             decay=loop_decay,
+                             harmonics=[(2, 0.25), (3, 0.15)],
+                             vibrato=loop_vibrato,
+                             detune=loop_detune)
+            place(sig, t_pos)
+            t_pos += actual_dur
+        loop_count += 1
+        t_pos += 0.5
+
+    # ── Act III melody: broken, detuned, with noise ──
+    act3_start = duration * act_boundaries[2]
+    act3_end = duration * act_boundaries[3]
+    t_pos = act3_start + 0.3
+    loop_count = 0
+    while t_pos < act3_end:
+        for note_name, dur in melody_broken:
+            if t_pos >= act3_end:
+                break
+            if note_name is None:
+                t_pos += dur
+                continue
+            # Progressively worse
+            prog = (t_pos - act3_start) / max(1, act3_end - act3_start)
+            sig = synth_note(note_freq(note_name), dur,
+                             volume=0.09 + prog * 0.04,
+                             decay=0.2,
+                             harmonics=[(2, 0.3), (3, 0.2), (7, 0.1 * prog)],
+                             vibrato=0.005 + prog * 0.015,
+                             detune=0.01 + prog * 0.03,
+                             noise_mix=prog * 0.15)
+            place(sig, t_pos)
+            t_pos += dur
+        loop_count += 1
+        t_pos += 0.8
+
+    # ── Act IV melody: isolated dying notes, very sparse ──
+    act4_start = duration * act_boundaries[3]
+    t_pos = act4_start + 1.0
+    for note_name, dur in melody_dying:
+        if t_pos >= duration - 2:
+            break
+        if note_name is None:
+            t_pos += dur
+            continue
+        sig = synth_note(note_freq(note_name), dur,
+                         volume=0.08,
+                         decay=0.8,
+                         harmonics=[(2, 0.2)],
+                         vibrato=0.003,
+                         detune=0.005,
+                         noise_mix=0.03)
+        place(sig, t_pos)
+        t_pos += dur
+
+    # ════════════════════════════════════════════════════════════════════
+    # LAYER 2: PAD / DRONE — warm pad that becomes cold and dissonant
+    # ════════════════════════════════════════════════════════════════════
+
+    # Act I: warm C major pad
+    pad1_len = int(act1_end * SAMPLE_RATE)
+    if pad1_len > 0:
+        pad_t = np.arange(pad1_len) / SAMPLE_RATE
+        pad = np.zeros(pad1_len)
+        for f in [note_freq('C3'), note_freq('E3'), note_freq('G3')]:
+            pad += np.sin(2 * np.pi * f * pad_t)
+        pad *= 0.03
+        # Gentle swell envelope
+        env = np.sin(np.linspace(0, np.pi, pad1_len)) ** 0.5
+        pad *= env
+        idx = int(0.5 * SAMPLE_RATE)
+        end = min(idx + pad1_len, n_samples)
+        audio[idx:end] += pad[:end - idx]
+
+    # Act II: C minor pad, slowly dropping
+    pad2_start = int(act2_start * SAMPLE_RATE)
+    pad2_len = int((act2_end - act2_start) * SAMPLE_RATE)
+    if pad2_len > 0:
+        pad_t = np.arange(pad2_len) / SAMPLE_RATE
+        pad_prog = np.linspace(0, 1, pad2_len)
+        pad = np.zeros(pad2_len)
+        # C minor chord, detuning over time
+        for f in [note_freq('C3'), note_freq('D#3'), note_freq('G3')]:
+            detune_amt = 1 + pad_prog * 0.008
+            phase = 2 * np.pi * np.cumsum(f * detune_amt) / SAMPLE_RATE
+            pad += np.sin(phase)
+        pad *= 0.025
+        env = np.sin(np.linspace(0, np.pi, pad2_len)) ** 0.5
+        pad *= env
+        end = min(pad2_start + pad2_len, n_samples)
+        audio[pad2_start:end] += pad[:end - pad2_start]
+
+    # Act III: dissonant cluster drone
+    pad3_start = int(act3_start * SAMPLE_RATE)
+    pad3_len = int((act3_end - act3_start) * SAMPLE_RATE)
+    if pad3_len > 0:
+        pad_t = np.arange(pad3_len) / SAMPLE_RATE
+        pad_prog = np.linspace(0, 1, pad3_len)
+        pad = np.zeros(pad3_len)
+        # Cluster: C, C#, F#, G — maximum tension
+        for semitone in [0, 1, 6, 7]:
+            f = note_freq('C2') * (2 ** (semitone / 12))
+            detune_amt = 1 + pad_prog * 0.02
+            phase = 2 * np.pi * np.cumsum(f * detune_amt) / SAMPLE_RATE
+            pad += np.sin(phase)
+        pad *= 0.03
+        env = np.sin(np.linspace(0, np.pi, pad3_len)) ** 0.3  # more sustained
+        pad *= env
+        end = min(pad3_start + pad3_len, n_samples)
+        audio[pad3_start:end] += pad[:end - pad3_start]
+
+    # Act IV: single low drone, barely audible, fading
+    pad4_start = int(act4_start * SAMPLE_RATE)
+    pad4_len = n_samples - pad4_start
+    if pad4_len > 0:
+        pad_t = np.arange(pad4_len) / SAMPLE_RATE
+        pad = 0.02 * np.sin(2 * np.pi * note_freq('C1') * pad_t)
+        env = np.exp(-np.arange(pad4_len) / (pad4_len * 0.6))
+        pad *= env
+        audio[pad4_start:pad4_start + pad4_len] += pad
+
+    # ════════════════════════════════════════════════════════════════════
+    # LAYER 3: HEARTBEAT — enters Act II, accelerates through Act III
+    # ════════════════════════════════════════════════════════════════════
+    heartbeat_start = int(act2_start * 0.8 * SAMPLE_RATE)
+    heartbeat_end = int(duration * 0.88 * SAMPLE_RATE)
     beat_pos = heartbeat_start
-    bpm = 60
-    while beat_pos < n_samples:
-        beat_prog = (beat_pos - heartbeat_start) / (n_samples - heartbeat_start)
-        bpm = 60 + beat_prog * 120  # 60 -> 180 bpm
-        beat_len = int(0.08 * SAMPLE_RATE)
+    while beat_pos < heartbeat_end:
+        beat_prog = (beat_pos - heartbeat_start) / max(1, heartbeat_end - heartbeat_start)
+        bpm = 55 + beat_prog * 140  # 55bpm -> 195bpm
+        beat_len = int(0.09 * SAMPLE_RATE)
         if beat_pos + beat_len < n_samples:
-            beat = 0.12 * np.sin(2 * np.pi * 40 * np.arange(beat_len) / SAMPLE_RATE)
-            beat *= np.exp(-np.arange(beat_len) / (beat_len * 0.15))
-            volume = 0.3 + beat_prog * 0.7
-            audio[beat_pos:beat_pos + beat_len] += beat * volume
-        interval = int(SAMPLE_RATE * 60 / bpm)
+            # Double-thud heartbeat (lub-dub)
+            lub = 0.10 * np.sin(2 * np.pi * 35 * np.arange(beat_len) / SAMPLE_RATE)
+            lub *= np.exp(-np.arange(beat_len) / (beat_len * 0.12))
+            dub_delay = int(0.12 * SAMPLE_RATE)
+            dub_len = int(0.06 * SAMPLE_RATE)
+            volume = 0.2 + beat_prog * 0.8
+            audio[beat_pos:beat_pos + beat_len] += lub * volume
+            dub_pos = beat_pos + dub_delay
+            if dub_pos + dub_len < n_samples:
+                dub = 0.07 * np.sin(2 * np.pi * 45 * np.arange(dub_len) / SAMPLE_RATE)
+                dub *= np.exp(-np.arange(dub_len) / (dub_len * 0.1))
+                audio[dub_pos:dub_pos + dub_len] += dub * volume
+        interval = max(int(0.15 * SAMPLE_RATE), int(SAMPLE_RATE * 60 / bpm))
         beat_pos += interval
 
-    # ── Layer 4: Static/noise that builds throughout ──
-    noise = np.random.randn(n_samples) * 0.03
-    noise_env = progress ** 3  # starts quiet, grows
+    # ════════════════════════════════════════════════════════════════════
+    # LAYER 4: TEXTURE — noise, static, industrial sounds
+    # ════════════════════════════════════════════════════════════════════
+
+    # Gentle vinyl crackle in Act I
+    act1_samples = int(act1_end * SAMPLE_RATE)
+    if act1_samples > 0:
+        crackle = np.zeros(act1_samples)
+        n_pops = int(act1_end * 8)  # ~8 pops per second
+        for _ in range(n_pops):
+            pop_pos = random.randint(0, act1_samples - 100)
+            pop_len = random.randint(5, 40)
+            crackle[pop_pos:pop_pos + pop_len] = np.random.randn(pop_len) * 0.01
+        audio[:act1_samples] += crackle
+
+    # Building static noise from Act II onward
+    noise = np.random.randn(n_samples) * 0.025
+    noise_env = np.clip((progress - 0.2) * 1.5, 0, 1) ** 2.5
     audio += noise * noise_env
 
-    # ── Layer 5: Dissonant chord swells in final third ──
-    swell_start = int(0.65 * n_samples)
-    swell_end = int(0.95 * n_samples)
-    swell_len = swell_end - swell_start
-    if swell_len > 0:
-        swell_t = np.arange(swell_len) / SAMPLE_RATE
-        # Cluster chord: all semitones near low E
-        swell = np.zeros(swell_len)
-        for semitone in [0, 1, 6, 7]:  # E, F, Bb, B — maximum dissonance
-            freq = 82.4 * (2 ** (semitone / 12))
-            swell += np.sin(2 * np.pi * freq * swell_t)
-        swell *= 0.04
-        env = np.sin(np.linspace(0, np.pi, swell_len))
-        audio[swell_start:swell_end] += swell * env
+    # Metallic scrapes / industrial hits in Act III
+    scrape_start = act3_start
+    scrape_end = act3_end
+    n_scrapes = 15
+    for _ in range(n_scrapes):
+        st = random.uniform(scrape_start, scrape_end)
+        idx = int(st * SAMPLE_RATE)
+        scrape_len = int(random.uniform(0.05, 0.25) * SAMPLE_RATE)
+        if idx + scrape_len < n_samples:
+            # Metallic: high-freq noise modulated by a carrier
+            carrier_f = random.uniform(800, 3000)
+            scrape_t = np.arange(scrape_len) / SAMPLE_RATE
+            scrape = np.random.randn(scrape_len) * np.sin(2 * np.pi * carrier_f * scrape_t)
+            scrape *= 0.06 * np.exp(-np.arange(scrape_len) / (scrape_len * 0.3))
+            audio[idx:idx + scrape_len] += scrape
 
-    # ── Layer 6: Sudden silence gaps (censorship / suppression) ──
-    for _ in range(8):
-        gap_start = int(random.uniform(0.4, 0.85) * n_samples)
-        gap_len = int(random.uniform(0.05, 0.2) * SAMPLE_RATE)
-        gap_end = min(gap_start + gap_len, n_samples)
-        # Sharp cut to silence
-        audio[gap_start:gap_end] *= 0.05
+    # ════════════════════════════════════════════════════════════════════
+    # LAYER 5: SILENCE CUTS — the music gets censored / choked
+    # ════════════════════════════════════════════════════════════════════
+    # Short silence gaps in Acts II-III, like something is being suppressed
+    for _ in range(10):
+        gap_time = random.uniform(duration * 0.35, duration * 0.75)
+        gap_idx = int(gap_time * SAMPLE_RATE)
+        gap_len = int(random.uniform(0.08, 0.3) * SAMPLE_RATE)
+        gap_end = min(gap_idx + gap_len, n_samples)
+        # Quick fade out and in (not a pop)
+        fade = min(int(0.005 * SAMPLE_RATE), (gap_end - gap_idx) // 4)
+        if gap_idx + fade < gap_end - fade:
+            audio[gap_idx:gap_idx + fade] *= np.linspace(1, 0, fade)
+            audio[gap_idx + fade:gap_end - fade] *= 0.03
+            audio[gap_end - fade:gap_end] *= np.linspace(0, 1, fade)
 
-    # ── Layer 7: Final section — near silence with single low pulse ──
-    final_start = int(0.92 * n_samples)
-    audio[final_start:] *= np.linspace(1, 0.1, n_samples - final_start)
-    # One last deep thud
-    thud_pos = int(0.95 * n_samples)
-    thud_len = int(0.3 * SAMPLE_RATE)
-    if thud_pos + thud_len < n_samples:
-        thud = 0.3 * np.sin(2 * np.pi * 30 * np.arange(thud_len) / SAMPLE_RATE)
-        thud *= np.exp(-np.arange(thud_len) / (thud_len * 0.2))
-        audio[thud_pos:thud_pos + thud_len] += thud
+    # ════════════════════════════════════════════════════════════════════
+    # LAYER 6: REVERSE MELODY GHOST — Act III, reversed echoes of Act I
+    # ════════════════════════════════════════════════════════════════════
+    # Take a chunk of early audio and reverse it as a ghost in Act III
+    ghost_src_len = int(3.0 * SAMPLE_RATE)
+    ghost_src_start = int(1.0 * SAMPLE_RATE)
+    if ghost_src_start + ghost_src_len < n_samples:
+        ghost = audio[ghost_src_start:ghost_src_start + ghost_src_len].copy()
+        ghost = ghost[::-1]  # reverse
+        ghost *= 0.15  # quiet
+        ghost_dest = int((act3_start + 2) * SAMPLE_RATE)
+        ghost_end = min(ghost_dest + ghost_src_len, n_samples)
+        actual_len = ghost_end - ghost_dest
+        if actual_len > 0:
+            audio[ghost_dest:ghost_end] += ghost[:actual_len]
 
-    # Normalize
+    # ════════════════════════════════════════════════════════════════════
+    # LAYER 7: FINAL SECTION — near silence, one last low note, nothing
+    # ════════════════════════════════════════════════════════════════════
+    final_fade_start = int(0.90 * n_samples)
+    if final_fade_start < n_samples:
+        fade_len = n_samples - final_fade_start
+        audio[final_fade_start:] *= np.linspace(1, 0.05, fade_len)
+
+    # One final deep thud
+    thud_time = duration * 0.93
+    thud_idx = int(thud_time * SAMPLE_RATE)
+    thud_len = int(0.5 * SAMPLE_RATE)
+    if thud_idx + thud_len < n_samples:
+        thud = 0.25 * np.sin(2 * np.pi * 27.5 * np.arange(thud_len) / SAMPLE_RATE)
+        thud *= np.exp(-np.arange(thud_len) / (thud_len * 0.25))
+        audio[thud_idx:thud_idx + thud_len] += thud
+
+    # ════════════════════════════════════════════════════════════════════
+    # MASTER: normalize
+    # ════════════════════════════════════════════════════════════════════
     peak = np.max(np.abs(audio))
     if peak > 0:
-        audio = audio / peak * 0.85
+        audio = audio / peak * 0.88
 
     return (audio * 32767).astype(np.int16)
 
