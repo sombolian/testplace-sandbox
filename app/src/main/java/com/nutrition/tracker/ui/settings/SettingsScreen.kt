@@ -19,8 +19,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nutrition.tracker.data.preferences.UserPreferences
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,6 +53,8 @@ fun SettingsScreen(
     val allergies by viewModel.allergies.collectAsState()
 
     var showApiKey by remember { mutableStateOf(false) }
+    var showSavedConfirmation by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -61,7 +66,32 @@ fun SettingsScreen(
                     }
                 }
             )
-        }
+        },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = {
+                    showSavedConfirmation = true
+                    scope.launch {
+                        delay(1500)
+                        showSavedConfirmation = false
+                    }
+                },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Icon(
+                    if (showSavedConfirmation) Icons.Default.Check else Icons.Default.Save,
+                    contentDescription = "Save"
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (showSavedConfirmation) "Saved!" else "Save",
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        },
+        floatingActionButtonPosition = FabPosition.End
     ) { padding ->
         Column(
             modifier = Modifier
@@ -298,7 +328,7 @@ fun SettingsScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        "NutriTrack v1.0",
+                        "NutriTrack v2.0",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
