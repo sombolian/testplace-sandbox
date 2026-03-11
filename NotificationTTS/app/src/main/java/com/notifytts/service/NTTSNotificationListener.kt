@@ -33,12 +33,11 @@ class NTTSNotificationListener : NotificationListenerService() {
         processor = NotificationProcessor(prefs, packageManager)
 
         bluetoothMonitor.startMonitoring { connected ->
-            Log.d(TAG, "Audio device connection changed: $connected")
+            Log.d(TAG, "Audio device connection changed: connected=$connected")
             if (!connected && !prefs.alsoSpeaker) {
-                // Headphones disconnected and speaker mode is off - stop everything immediately
-                Log.w(TAG, "Headphones disconnected - pausing TTS and clearing queue to prevent speaker output")
-                ttsManager.pause()
-                ttsManager.resume() // Reset paused state so future notifications work when earbuds reconnect
+                // Headphones disconnected and speaker mode is off - EMERGENCY STOP
+                Log.w(TAG, "EMERGENCY: Headphones disconnected - killing all TTS immediately to prevent speaker output")
+                ttsManager.emergencyStop()
             }
         }
 
@@ -168,13 +167,21 @@ class NTTSNotificationListener : NotificationListenerService() {
         val btConnected = bluetoothMonitor.isBluetoothAudioConnected()
         val wiredConnected = bluetoothMonitor.isWiredHeadphonesConnected()
 
-        if (prefs.alsoSpeaker) return true
-        if (prefs.onlyWhenBluetooth && btConnected) return true
-        if (prefs.alsoWiredHeadphones && wiredConnected) return true
-        if (!prefs.onlyWhenBluetooth && !prefs.alsoWiredHeadphones && !prefs.alsoSpeaker) {
-            // If no output restrictions are set, default to bluetooth-only behavior
-            return btConnected
+        Log.d(TAG, "shouldSpeak check: bt=$btConnected, wired=$wiredConnected, " +
+            "alsoSpeaker=${prefs.alsoSpeaker}, onlyBt=${prefs.onlyWhenBluetooth}, alsoWired=${prefs.alsoWiredHeadphones}")
+
+        // FAILSAFE: Never play through phone speaker unless user EXPLICITLY enabled it
+        if (prefs.alsoSpeaker) {
+            // User explicitly allows speaker output - allow any output
+            return true
         }
+
+        // From here on: speaker output is FORBIDDEN. Must have headphones.
+        if (btConnected) return true
+        if (prefs.alsoWiredHeadphones && wiredConnected) return true
+
+        // No headphones connected - REFUSE to speak
+        Log.w(TAG, "BLOCKED: No headphones connected - refusing to speak to prevent speaker output")
         return false
     }
 

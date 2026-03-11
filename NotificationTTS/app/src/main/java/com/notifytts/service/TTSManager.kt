@@ -51,7 +51,6 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
     private val wakeLock: PowerManager.WakeLock = (context.getSystemService(Context.POWER_SERVICE) as PowerManager)
         .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "NotificationTTS:TTSPlayback")
 
-    // Deferreds for current playback - allows skip/pause to unblock await immediately
     @Volatile private var audioDeferred: CompletableDeferred<Pair<Boolean, String>>? = null
     @Volatile private var deviceTtsDeferred: CompletableDeferred<Boolean>? = null
 
@@ -59,6 +58,8 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
     private val audioDeviceCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
             if (!isPlayingAudio) return
+            if (prefs.alsoSpeaker) return // User explicitly allows speaker
+
             val removedHeadphone = removedDevices?.any { device ->
                 device.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
                 device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
@@ -69,26 +70,26 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
                 device.type == AudioDeviceInfo.TYPE_USB_HEADSET
             } == true
 
-            if (removedHeadphone && !isAudioOutputSafe()) {
-                Log.w(TAG, "Audio device removed during playback - stopping to prevent speaker output")
-                stopPlaybackImmediately()
+            if (removedHeadphone) {
+                Log.w(TAG, "EMERGENCY: Audio device removed during playback - stopping IMMEDIATELY")
+                emergencyStop()
             }
         }
     }
 
-    // ACTION_AUDIO_BECOMING_NOISY: fired when audio output switches from private (headphones) to public (speaker)
+    // ACTION_AUDIO_BECOMING_NOISY: fired when audio switches from headphones to speaker
     private val noisyReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context?, intent: Intent?) {
-            if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY && isPlayingAudio) {
-                Log.w(TAG, "Audio becoming noisy (headphones removed) - stopping playback immediately")
-                stopPlaybackImmediately()
+            if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
+                if (prefs.alsoSpeaker) return // User allows speaker
+                Log.w(TAG, "EMERGENCY: Audio becoming noisy (switching to speaker) - stopping IMMEDIATELY")
+                emergencyStop()
             }
         }
     }
 
     init {
         initDeviceTts()
-        // Register real-time audio route monitoring
         audioManager.registerAudioDeviceCallback(audioDeviceCallback, null)
         context.registerReceiver(
             noisyReceiver,
@@ -97,17 +98,60 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
     }
 
     /**
-     * Check if audio output is safe (going to headphones/earbuds, not the phone speaker).
-     * Returns true if the user explicitly allows speaker output (alsoSpeaker setting),
-     * or if headphones/earbuds are currently connected.
+     * STRICT check: Is audio output safe (going to headphones, NOT the phone speaker)?
+     *
+     * FAILSAFE LOGIC:
+     * - If user allows speaker output: always safe
+     * - If bluetoothMonitor is null: UNSAFE (assume speaker) — never default to true
+     * - If no headphones detected: UNSAFE
+     * - Must find an actual BT/wired output device: otherwise UNSAFE
      */
     private fun isAudioOutputSafe(): Boolean {
         if (prefs.alsoSpeaker) return true
-        return bluetoothMonitor?.isAnyHeadphonesConnected() ?: true
+
+        // CRITICAL: If no bluetooth monitor, assume UNSAFE — never play through speaker
+        val monitor = bluetoothMonitor
+        if (monitor == null) {
+            Log.w(TAG, "BLOCKED: No BluetoothMonitor available - assuming speaker output (UNSAFE)")
+            return false
+        }
+
+        val btConnected = monitor.isBluetoothAudioConnected()
+        val wiredConnected = monitor.isWiredHeadphonesConnected()
+
+        if (btConnected) return true
+        if (prefs.alsoWiredHeadphones && wiredConnected) return true
+
+        Log.w(TAG, "BLOCKED: No headphones detected (bt=$btConnected, wired=$wiredConnected)")
+        return false
     }
 
-    /** Immediately stop all playback and clear the queue. Used when audio route becomes unsafe. */
-    private fun stopPlaybackImmediately() {
+    /**
+     * Find a headphone output device for forced audio routing.
+     * Returns null if no headphone device exists — in which case we MUST NOT play.
+     */
+    private fun findHeadphoneOutputDevice(): AudioDeviceInfo? {
+        val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        // Prefer Bluetooth A2DP, then BLE, then wired
+        return devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP }
+            ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLE_HEADSET }
+            ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLE_SPEAKER }
+            ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
+            ?: if (prefs.alsoWiredHeadphones) {
+                devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES }
+                    ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET }
+                    ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_USB_HEADSET }
+            } else null
+    }
+
+    /**
+     * EMERGENCY STOP: Immediately kill all audio and clear queue.
+     * Called when headphones disconnect or audio route changes to speaker.
+     * This is NOT the same as pause() — it does not set isPaused, so future
+     * notifications can still play when headphones reconnect.
+     */
+    fun emergencyStop() {
+        Log.w(TAG, "EMERGENCY STOP: Killing all audio to prevent speaker output")
         isPlayingAudio = false
 
         // Stop MediaPlayer
@@ -119,19 +163,20 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
         // Stop device TTS
         deviceTts?.stop()
 
-        // Fail the pending deferreds - audio route is unsafe
-        audioDeferred?.complete(Pair(false, "Audio route changed to speaker - stopped"))
+        // Fail all pending deferreds
+        audioDeferred?.complete(Pair(false, "Emergency stop - headphones disconnected"))
         audioDeferred = null
         deviceTtsDeferred?.complete(false)
         deviceTtsDeferred = null
 
-        // Clear the queue - don't let anything else play through the speaker
+        // Clear the entire queue
         while (queue.isNotEmpty()) {
             val item = queue.poll()
-            item?.onResult?.invoke(false, "Headphones disconnected - queue cleared")
+            item?.onResult?.invoke(false, "Emergency stop - headphones disconnected")
         }
 
         abandonAudioFocus()
+        try { if (wakeLock.isHeld) wakeLock.release() } catch (_: Exception) {}
     }
 
     private fun initDeviceTts() {
@@ -148,6 +193,14 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
             onResult?.invoke(false, "TTS is paused")
             return
         }
+
+        // FAILSAFE: Check audio output BEFORE even queuing
+        if (!isAudioOutputSafe()) {
+            Log.w(TAG, "BLOCKED at enqueue: No headphones - refusing to queue")
+            onResult?.invoke(false, "No headphones connected - blocked at enqueue")
+            return
+        }
+
         if (queue.size >= prefs.maxQueueSize) {
             Log.w(TAG, "Queue full, dropping notification")
             onResult?.invoke(false, "Queue full")
@@ -173,11 +226,20 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
 
             try {
                 while (queue.isNotEmpty() && !isPaused) {
+                    // FAILSAFE: Re-check audio output before EACH item
+                    if (!isAudioOutputSafe()) {
+                        Log.w(TAG, "BLOCKED in processQueue: No headphones - clearing remaining queue")
+                        while (queue.isNotEmpty()) {
+                            val dropped = queue.poll()
+                            dropped?.onResult?.invoke(false, "Headphones disconnected - queue cleared")
+                        }
+                        break
+                    }
+
                     val item = queue.poll() ?: break
-                    // Skip stale items (queued > 60s ago)
                     val age = System.currentTimeMillis() - item.enqueuedAt
                     if (age > 60_000L) {
-                        Log.w(TAG, "Dropping stale queued item (${age / 1000}s old): ${item.text.take(30)}")
+                        Log.w(TAG, "Dropping stale queued item (${age / 1000}s old)")
                         item.onResult?.invoke(false, "Stale - queued ${age / 1000}s ago")
                         continue
                     }
@@ -193,7 +255,6 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
                     isProcessing = false
                     isPlayingAudio = false
                 }
-                // Re-check: items may have been enqueued while we were shutting down
                 if (queue.isNotEmpty() && !isPaused) {
                     processQueue()
                 }
@@ -240,14 +301,36 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
     }
 
     private suspend fun speakInternal(item: TTSQueueItem) {
-        // CRITICAL: Re-check audio output right before playback.
-        // The original shouldSpeak() check happened when the notification arrived,
-        // but earbuds may have been removed between then and now.
+        // ═══ TRIPLE CHECK: Audio output safety ═══
+        // Check 1: Is audio output safe right now?
         if (!isAudioOutputSafe()) {
-            Log.w(TAG, "Audio output unsafe (no headphones) - refusing to speak")
-            item.onResult?.invoke(false, "No headphones connected - refused to play through speaker")
+            Log.w(TAG, "BLOCKED (check 1/3): Audio output unsafe - no headphones")
+            item.onResult?.invoke(false, "No headphones connected - refused to play")
             return
         }
+
+        // Check 2: Can we find an actual headphone device to route to?
+        if (!prefs.alsoSpeaker) {
+            val headphoneDevice = findHeadphoneOutputDevice()
+            if (headphoneDevice == null) {
+                Log.w(TAG, "BLOCKED (check 2/3): No headphone output device found in AudioManager")
+                item.onResult?.invoke(false, "No headphone output device found")
+                return
+            }
+        }
+
+        // Check 3: Ask BluetoothMonitor one more time
+        if (!prefs.alsoSpeaker && bluetoothMonitor != null) {
+            val btOk = bluetoothMonitor.isBluetoothAudioConnected()
+            val wiredOk = prefs.alsoWiredHeadphones && bluetoothMonitor.isWiredHeadphonesConnected()
+            if (!btOk && !wiredOk) {
+                Log.w(TAG, "BLOCKED (check 3/3): BluetoothMonitor confirms no headphones")
+                item.onResult?.invoke(false, "BluetoothMonitor confirms no headphones")
+                return
+            }
+        }
+
+        Log.d(TAG, "All 3 audio safety checks PASSED - proceeding with TTS")
 
         if (prefs.useDeviceTtsOnly) {
             val success = speakWithDeviceTts(item.text)
@@ -272,7 +355,6 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
             return
         }
 
-        // Resolve tone instruction
         val toneKey = prefs.ttsTone
         val toneInstruction = if (toneKey == "custom") {
             prefs.customToneInstruction
@@ -280,7 +362,7 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
             GeminiTTSAPI.TONE_PRESETS[toneKey]
         }
 
-        Log.d(TAG, "Generating TTS: voice=${prefs.geminiVoiceName}, model=${prefs.geminiModel}, tone=$toneKey, text='${ttsText.take(50)}...'")
+        Log.d(TAG, "Generating TTS: voice=${prefs.geminiVoiceName}, model=${prefs.geminiModel}, tone=$toneKey")
 
         val result = geminiTTSAPI.synthesize(
             text = ttsText,
@@ -332,6 +414,13 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
             return@withContext Pair(false, "Audio file too small: ${file.length()} bytes")
         }
 
+        // FAILSAFE: One more check right before we actually play audio
+        if (!isAudioOutputSafe()) {
+            Log.w(TAG, "BLOCKED at playAudioFile: Audio output became unsafe before playback")
+            file.delete()
+            return@withContext Pair(false, "No headphones at playback time")
+        }
+
         val completable = CompletableDeferred<Pair<Boolean, String>>()
         audioDeferred = completable
         var mediaPlayer: MediaPlayer? = null
@@ -339,14 +428,13 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
         requestAudioFocus()
 
         try {
-            // When Bluetooth is connected, use USAGE_MEDIA to ensure audio routes to A2DP.
-            // USAGE_NOTIFICATION plays through the phone speaker on most Android devices
-            // even when Bluetooth headphones are connected.
-            val effectiveUsage = if (!prefs.alsoSpeaker && findHeadphoneOutputDevice() != null) {
+            // ALWAYS use USAGE_MEDIA when not using speaker — this routes through A2DP
+            val effectiveUsage = if (!prefs.alsoSpeaker) {
                 AudioAttributes.USAGE_MEDIA
             } else {
                 prefs.audioUsageType
             }
+
             mediaPlayer = MediaPlayer().apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
@@ -358,22 +446,22 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
                 prepare()
             }
 
-            // Force audio to headphones/earbuds if available - never fall back to speaker
+            // CRITICAL: Force audio to headphone device — never fall back to speaker
             if (!prefs.alsoSpeaker) {
                 val headphoneDevice = findHeadphoneOutputDevice()
                 if (headphoneDevice != null) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                         mediaPlayer.setPreferredDevice(headphoneDevice)
-                        Log.d(TAG, "Forced audio to device: ${headphoneDevice.productName} (type=${headphoneDevice.type})")
+                        Log.d(TAG, "Forced audio to: ${headphoneDevice.productName} (type=${headphoneDevice.type})")
                     }
                 } else {
-                    // No headphone device found at playback time - abort
-                    Log.w(TAG, "No headphone device found at playback time - aborting")
+                    // NO headphone device found — ABORT IMMEDIATELY
+                    Log.w(TAG, "BLOCKED: No headphone device at playback - aborting to prevent speaker output")
                     mediaPlayer.release()
                     file.delete()
                     abandonAudioFocus()
                     audioDeferred = null
-                    return@withContext Pair(false, "No headphones connected at playback time")
+                    return@withContext Pair(false, "No headphones at playback time - aborted")
                 }
             }
 
@@ -389,7 +477,6 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
             currentMediaPlayer = mediaPlayer
 
             mediaPlayer.setOnCompletionListener { mp ->
-                // Guard: skip/pause may have already completed the deferred
                 if (!completable.isCompleted) {
                     isPlayingAudio = false
                     try { mp.release() } catch (_: Exception) {}
@@ -425,6 +512,7 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
             mediaPlayer.start()
             isPlayingAudio = true
 
+            // FAILSAFE: Verify playback actually started
             if (!mediaPlayer.isPlaying) {
                 isPlayingAudio = false
                 mediaPlayer.release()
@@ -433,6 +521,32 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
                 abandonAudioFocus()
                 audioDeferred = null
                 return@withContext Pair(false, "MediaPlayer.start() called but isPlaying=false")
+            }
+
+            // FAILSAFE: After start, verify audio is routing to the right device
+            if (!prefs.alsoSpeaker && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val routedDevice = mediaPlayer.routedDevice
+                if (routedDevice != null) {
+                    val isHeadphone = routedDevice.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                        routedDevice.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                        routedDevice.type == AudioDeviceInfo.TYPE_BLE_SPEAKER ||
+                        routedDevice.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                        routedDevice.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                        routedDevice.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                        routedDevice.type == AudioDeviceInfo.TYPE_USB_HEADSET
+                    if (!isHeadphone) {
+                        Log.w(TAG, "EMERGENCY: Audio routed to non-headphone device type=${routedDevice.type} (${routedDevice.productName}) - STOPPING")
+                        isPlayingAudio = false
+                        mediaPlayer.stop()
+                        mediaPlayer.release()
+                        currentMediaPlayer = null
+                        file.delete()
+                        abandonAudioFocus()
+                        audioDeferred = null
+                        return@withContext Pair(false, "Audio routed to speaker (type=${routedDevice.type}) - stopped")
+                    }
+                    Log.d(TAG, "Audio routing verified: ${routedDevice.productName} (type=${routedDevice.type})")
+                }
             }
 
             try {
@@ -460,6 +574,12 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
     }
 
     private suspend fun speakWithDeviceTts(text: String): Boolean = withContext(Dispatchers.Main) {
+        // FAILSAFE: Check audio output before device TTS too
+        if (!isAudioOutputSafe()) {
+            Log.w(TAG, "BLOCKED: Device TTS blocked - no headphones connected")
+            return@withContext false
+        }
+
         var waited = 0
         while (!deviceTtsReady && waited < 3000) {
             delay(100)
@@ -479,9 +599,8 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
             language = Locale("he", "IL")
             setSpeechRate(prefs.ttsSpeed)
 
-            // Set audio attributes to USAGE_MEDIA when headphones are connected
-            // so Android routes TTS audio through A2DP, not the phone speaker
-            val effectiveUsage = if (!prefs.alsoSpeaker && findHeadphoneOutputDevice() != null) {
+            // Use USAGE_MEDIA to route through BT A2DP
+            val effectiveUsage = if (!prefs.alsoSpeaker) {
                 AudioAttributes.USAGE_MEDIA
             } else {
                 prefs.audioUsageType
@@ -529,22 +648,8 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
         }
     }
 
-    /** Find a connected headphone/earbud output device to force audio routing. */
-    private fun findHeadphoneOutputDevice(): AudioDeviceInfo? {
-        val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-        // Prefer Bluetooth A2DP (music quality), then BLE, then wired
-        return devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP }
-            ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLE_HEADSET }
-            ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLE_SPEAKER }
-            ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
-            ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES }
-            ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET }
-            ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_USB_HEADSET }
-    }
-
     private fun requestAudioFocus() {
-        // Use USAGE_MEDIA when headphones are connected to ensure audio focus goes through the right stream
-        val effectiveUsage = if (!prefs.alsoSpeaker && findHeadphoneOutputDevice() != null) {
+        val effectiveUsage = if (!prefs.alsoSpeaker) {
             AudioAttributes.USAGE_MEDIA
         } else {
             prefs.audioUsageType
@@ -573,24 +678,16 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
         return isPlayingAudio
     }
 
-    /**
-     * Skip the currently playing TTS. Marks it as success (played).
-     * Does NOT stop queue processing - next items will play.
-     */
     fun skip() {
         Log.d(TAG, "Skipping current TTS")
         isPlayingAudio = false
 
-        // Stop MediaPlayer
         currentMediaPlayer?.let {
             try { it.stop(); it.release() } catch (_: Exception) {}
         }
         currentMediaPlayer = null
-
-        // Stop device TTS
         deviceTts?.stop()
 
-        // Complete the pending deferreds as SUCCESS so item is marked "played"
         audioDeferred?.complete(Pair(true, "skipped"))
         audioDeferred = null
         deviceTtsDeferred?.complete(true)
@@ -599,9 +696,6 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
         abandonAudioFocus()
     }
 
-    /**
-     * Pause all TTS. Stops current playback (marks as failed) and clears queue.
-     */
     fun pause() {
         isPaused = true
         isPlayingAudio = false
@@ -612,7 +706,6 @@ class TTSManager(private val context: Context, private val bluetoothMonitor: Blu
         currentMediaPlayer = null
         deviceTts?.stop()
 
-        // Complete deferreds as failure (paused)
         audioDeferred?.complete(Pair(false, "Paused"))
         audioDeferred = null
         deviceTtsDeferred?.complete(false)
