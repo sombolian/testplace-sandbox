@@ -34,13 +34,55 @@ class GeminiTTSAPI(private val cacheDir: File) {
         private const val CHANNELS = 1
         private const val BITS_PER_SAMPLE = 16
 
-        /** Tone presets — embedded as director's notes in the text prompt (TTS models don't support system_instruction) */
+        /**
+         * Tone presets using Gemini 3.1's Director's Notes framework.
+         * These give the model a full character profile + performance direction,
+         * producing far more consistent and natural-sounding output than simple "say in X tone".
+         */
         val TONE_PRESETS: Map<String, String> = linkedMapOf(
-            "neutral" to "Say in a calm, neutral, even tone:",
-            "calm" to "Say softly in a calm, relaxed, soothing tone:",
-            "friendly" to "Say in a warm, friendly, pleasant tone:",
-            "professional" to "Say in a professional, matter-of-fact, clear tone:",
-            "energetic" to "Say in an upbeat, energetic, lively tone:",
+            "neutral" to """
+                |Audio Profile: A composed, professional narrator with a steady, even delivery.
+                |Scene: Reading a notification aloud in a quiet room.
+                |Director's Notes: Keep tone completely neutral and measured. No emotional coloring.
+                |Maintain consistent pacing throughout. Read clearly and precisely.
+            """.trimMargin(),
+            "calm" to """
+                |Audio Profile: A gentle, reassuring voice — like a late-night radio host.
+                |Scene: Softly reading a message to someone resting nearby.
+                |Director's Notes: Speak slowly and softly with warmth. Lower register preferred.
+                |Let words breathe — slight pauses between phrases. Never rush. [gentle] [soft-spoken]
+            """.trimMargin(),
+            "friendly" to """
+                |Audio Profile: An upbeat, approachable friend sharing good news.
+                |Scene: Casually telling a friend about a message they just got.
+                |Director's Notes: Warm smile in the voice — 'The Vocal Smile' technique with soft palate raised.
+                |Conversational and natural. Light and pleasant, but not over-the-top. [cheerful]
+            """.trimMargin(),
+            "professional" to """
+                |Audio Profile: A polished news anchor delivering a brief update.
+                |Scene: A crisp, authoritative readout of important information.
+                |Director's Notes: Clear enunciation, confident pacing. Slight formality without being stiff.
+                |Emphasis on clarity and precision. No filler words. Measured tempo.
+            """.trimMargin(),
+            "energetic" to """
+                |Audio Profile: A lively, enthusiastic presenter with infectious energy.
+                |Scene: Excitedly announcing something interesting.
+                |Director's Notes: Higher energy, slightly faster pace. Dynamic pitch variation.
+                |Genuine excitement without yelling. [excited] Emphasize key words naturally.
+            """.trimMargin(),
+            "whisper" to """
+                |Audio Profile: Someone whispering discreetly.
+                |Scene: Quietly relaying a private message so only the listener hears.
+                |Director's Notes: [whispers] Breathy, hushed delivery throughout. Very quiet.
+                |Intimate and private-sounding. Slow, deliberate pacing.
+            """.trimMargin(),
+            "storyteller" to """
+                |Audio Profile: A captivating storyteller with rich, expressive delivery.
+                |Scene: Narrating a passage from a book to an engaged listener.
+                |Director's Notes: Dynamic range — vary pace and pitch to match content.
+                |Paint pictures with the voice. Slight dramatic pauses for effect.
+                |Let important words land with weight.
+            """.trimMargin(),
             "custom" to "" // User-defined instruction
         )
 
@@ -50,6 +92,8 @@ class GeminiTTSAPI(private val cacheDir: File) {
             "friendly" to "Warm & Friendly",
             "professional" to "Professional",
             "energetic" to "Energetic",
+            "whisper" to "Whisper",
+            "storyteller" to "Storyteller",
             "custom" to "Custom"
         )
 
@@ -99,9 +143,10 @@ class GeminiTTSAPI(private val cacheDir: File) {
         toneInstruction: String? = null
     ): Result<File> = withContext(Dispatchers.IO) {
         try {
-            // TTS models don't support system_instruction — embed tone in the text content
+            // Gemini 3.1 Flash TTS supports Director's Notes for precise tone control.
+            // Wrap the notification text with the character profile + the actual text to read.
             val finalText = if (!toneInstruction.isNullOrBlank()) {
-                "$toneInstruction\n\n$text"
+                "$toneInstruction\n\nNow read this notification aloud:\n\"$text\""
             } else {
                 text
             }

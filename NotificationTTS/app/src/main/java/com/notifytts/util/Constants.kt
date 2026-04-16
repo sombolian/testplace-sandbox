@@ -3,7 +3,7 @@ package com.notifytts.util
 object Constants {
     const val GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
     const val DEFAULT_VOICE_NAME = "Kore" // Neutral, professional female voice
-    const val DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-preview-tts" // Fast, low latency
+    const val DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-tts-preview" // Latest, best controllability
     const val DEFAULT_SPEED = 1.0f
     const val MAX_TEXT_LENGTH = 500
     const val DUPLICATE_TIMEOUT_MS = 30000L

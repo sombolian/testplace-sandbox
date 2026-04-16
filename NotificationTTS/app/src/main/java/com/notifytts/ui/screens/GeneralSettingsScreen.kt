@@ -206,16 +206,18 @@ fun GeneralSettingsScreen(
                 SettingsClickable(
                     title = "Model",
                     subtitle = when (model) {
-                        "gemini-2.5-pro-preview-tts" -> "Pro (Highest quality)"
-                        "gemini-2.5-flash-preview-tts" -> "Flash (Fast, low latency)"
+                        "gemini-3.1-flash-tts-preview" -> "3.1 Flash (Latest, best control)"
+                        "gemini-2.5-pro-preview-tts" -> "2.5 Pro (High fidelity)"
+                        "gemini-2.5-flash-preview-tts" -> "2.5 Flash (Fast)"
                         else -> model
                     },
                     onClick = { showModelMenu = true }
                 )
                 DropdownMenu(expanded = showModelMenu, onDismissRequest = { showModelMenu = false }) {
                     listOf(
-                        "gemini-2.5-flash-preview-tts" to "Flash (Fast, low latency)",
-                        "gemini-2.5-pro-preview-tts" to "Pro (Highest quality)",
+                        "gemini-3.1-flash-tts-preview" to "3.1 Flash (Latest, best control)",
+                        "gemini-2.5-flash-preview-tts" to "2.5 Flash (Fast)",
+                        "gemini-2.5-pro-preview-tts" to "2.5 Pro (High fidelity)",
                     ).forEach { (id, label) ->
                         DropdownMenuItem(
                             text = { Text(label) },

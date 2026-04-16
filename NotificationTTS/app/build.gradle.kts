@@ -12,11 +12,23 @@ android {
         applicationId = "com.notifytts"
         minSdk = 26
         targetSdk = 32
-        versionCode = 10
-        versionName = "2.0.0"
+        versionCode = 20
+        versionName = "3.0.0"
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("${project.rootDir}/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
