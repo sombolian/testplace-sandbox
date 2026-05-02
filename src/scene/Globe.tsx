@@ -99,11 +99,12 @@ export function Globe({ radius = 1, sunDir }: GlobeProps) {
   const matRef = useRef<ShaderMaterial>(null!)
   const layerMode = useGlobeStore((s) => s.layerMode)
 
+  const base = import.meta.env.BASE_URL
   const [day, night, specular, normal] = useTexture([
-    '/textures/earth-day.jpg',
-    '/textures/earth-night.png',
-    '/textures/earth-specular.jpg',
-    '/textures/earth-normal.jpg',
+    `${base}textures/earth-day.jpg`,
+    `${base}textures/earth-night.png`,
+    `${base}textures/earth-specular.jpg`,
+    `${base}textures/earth-normal.jpg`,
   ]) as unknown as [
     THREE_TEX,
     THREE_TEX,
@@ -155,7 +156,7 @@ interface CloudsProps {
 
 export function Clouds({ radius = 1.005 }: CloudsProps) {
   const meshRef = useRef<Mesh>(null!)
-  const cloudTex = useTexture('/textures/earth-clouds.png') as unknown as THREE_TEX
+  const cloudTex = useTexture(`${import.meta.env.BASE_URL}textures/earth-clouds.png`) as unknown as THREE_TEX
 
   useFrame((_, dt) => {
     if (meshRef.current) {

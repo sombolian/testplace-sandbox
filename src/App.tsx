@@ -24,9 +24,10 @@ function useCountryData() {
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     let alive = true
+    const base = import.meta.env.BASE_URL
     Promise.all([
-      fetch('/data/countries.geojson').then((r) => r.json()),
-      fetch('/data/countries-meta.json').then((r) => r.json()),
+      fetch(`${base}data/countries.geojson`).then((r) => r.json()),
+      fetch(`${base}data/countries-meta.json`).then((r) => r.json()),
     ])
       .then(([geojson, meta]) => {
         if (!alive) return
